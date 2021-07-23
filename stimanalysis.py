@@ -86,66 +86,47 @@ for i in [6]:
         ind = np.arange(wb[j], wb[j+1])
         df.loc[ind, 'phase'] = np.linspace(0, 1, len(ind))
     
-    
-    yvar = ftd['mx']    
-    fig, ax = plt.subplots(1, 3, figsize=(15,5))
-    
-    # Fit mean x wb pre-, during stim, and x wb after for all channels
-    xpre = []
-    xstim = []
-    xpost = []
-    
+
+    # Waste memory and create second phase column to count multiple wingbeats 
+    # (0->1, 1->2, etc rather than 0->1, 0->1)
+    df['multphase'] = df['phase']
+    df['wbstate'] = 'regular'
+    # Fit mean x wb pre-, during stim, and x wb after for all channels    
     for s in si:
         # get which wingbeat this stim is on
         stimwb = df.loc[s, 'wb']
         
         #--- Pre-stim wingbeats
-        # inds = np.where(np.logical_and(wbvec>=(stimwb-wbBefore), wbvec<stimwb))[0]
+        # Grab indices of this pre-stim period
         inds = np.where(np.logical_and(df['wb']>=(stimwb-wbBefore), df['wb']<stimwb))[0]
-        # xvec = phase[inds]
-        xvec = df.loc[inds, 'phase']
-        # Set up phase so it goes from 0->x where x is number of "before" wingbeats
+        # Label as pre-stim period
+        df.loc[inds, 'wbstate'] = 'pre'
+        # Change phase column to go from 0->x where x is number of "before" wingbeats
         for ii in np.arange(wbBefore):
-            thiswb = stimwb - wbBefore + ii
-            # thiswbinds = np.where(wbvec[inds]==thiswb)[0]
-            thiswbinds = np.where(df.loc[ind, 'wb']==thiswb)[0]
-            xvec[thiswbinds] = xvec[thiswbinds] + ii
-        # Plot
-        ax[0].plot(xvec, yvar[inds], lw=0.5)
-        
-        
+            thiswb = stimwb - wbBefore + ii        
+            df.loc[df['wb']==thiswb, 'multphase'] += ii
+                
         #--- Stim wingbeat
-        # inds = np.where(wbvec==stimwb)[0]
-        inds = np.where(df['wb']==stimwb)[0]
-        # xvec = phase[inds]
-        xvec = df.loc[inds, 'phase']
-        # Plot
-        ax[1].plot(xvec, yvar[inds], lw=0.5)
+        # label stim wingbeat
+        df.loc[df['wb']==stimwb, 'wbstate'] = 'stim'
         
         #--- Post-stim wingbeats
-        # inds = np.where(np.logical_and(wbvec<=(stimwb+wbAfter), wbvec>stimwb))[0]
         inds = np.where(np.logical_and(df['wb']<=(stimwb+wbAfter), df['wb']>stimwb))[0]
-        # xvec = phase[inds]
-        xvec = df.loc[inds, 'phase']
+        # Label as post-stim period
+        df.loc[inds, 'wbstate'] = 'post'
         # Set up phase so it goes from 0->x where x is number of "before" wingbeats
         for ii in np.arange(wbAfter):
             thiswb = stimwb + ii + 1
-            # thiswbinds = np.where(wbvec[inds]==thiswb)[0]
-            thiswbinds = np.where(df.loc[ind, 'wb']==thiswb)[0]
-            xvec[thiswbinds] = xvec[thiswbinds] + ii
-        # Plot
-        ax[2].plot(xvec, yvar[inds], lw=0.5)
-    
+            df.loc[df['wb']==thiswb, 'multphase'] += ii
 
     
-'''
-TODO:
-    - Come up with way to create mean lines (binned means? LOESS?)
-    - Way to store information from all trials
-    - data structure to generalize to many individuals and trials
-'''
 
-
-
+    # Remove regular wingbeats, plot to check
+    bob = df[df['wbstate'].isin(['pre','stim','post'])]
+    
+    
+plt.figure()
+jim = bob[bob['wbstate'].isin(['pre'])]
+plt.plot(jim['multphase'], jim['mx'])
 
 
