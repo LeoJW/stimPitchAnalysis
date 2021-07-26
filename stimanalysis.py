@@ -42,8 +42,12 @@ lpfCutoff = 500
 zforceCutoff = 40
 wbdistance = 200
 
+# Thresholds
+stimthresh = 3 # threshold to count stim channel as "on"
+
 
 # Manually entered delays
+# TODO: Add spike-sorting, automatically find delay PER WINGBEAT
 # delay = [3, 10, 8, 2, 14, 1, 6, 4, 15, 29, 11, 20]
 delay = [10, 7, 15, 18, 22, 8, 3, 28, 12, 17, 9, 14, 21, 4, 4, 13, 12, 17, 19, 21, 25, 25, 11, 8, 6, 10, 9]
 
@@ -103,7 +107,7 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     dtemp['multphase'] = dtemp['phase']
     dtemp['wbstate'] = 'regular'
     dtemp['pulse'] = np.nan
-    # Fit mean x wb pre-, during stim, and x wb after for all channels    
+    # Label wingbeats as being pre-, during, or post- stimulation
     for s in si:
         # get which wingbeat this stim is on
         stimwb = dtemp.loc[s, 'wb']
@@ -140,6 +144,9 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     # Remove regular wingbeats
     dtemp = dtemp[dtemp['wbstate'].isin(['pre','stim','post'])]
     
+    # Clean EMG channels to NAN during stimulation period (to remove artifact)
+    dtemp.loc[dtemp['stim']>stimthresh, channelsEMG] = np.nan
+    
     # Add to full dataframe
     if i==goodTrials[0]:
         df = dtemp
@@ -151,7 +158,7 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
 
 
 binPlot(df,
-        plotvars=channelsFT,
+        plotvars=['LDVM','LDLM','RDLM','RDVM'],
         groupvars=['wbstate','delay'],
         colorvar='delay',
         numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
@@ -242,3 +249,8 @@ binPlot(df,
 #                         fontsize=7)
 # cbar.ax.set_title('delay (ms)')
 
+#%%
+
+# quickPlot(date, '009',
+#           tstart=10, tend=15,
+#           plotnames=['LDVM', 'LDLM','RDLM','RDVM','stim'])
