@@ -38,9 +38,11 @@ wbAfter = 4
 # Filter Controls
 hpfCutoff = 70
 lpfCutoff = 500
+
 # Wingbeat finding
 zforceCutoff = 40
 wbdistance = 200
+fzheight = 0.05
 
 # Thresholds
 stimthresh = 3 # threshold to count stim channel as "on"
@@ -82,7 +84,8 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     
     # Grab wingbeats from filtered z force
     wb = find_peaks(butterfilt(dtemp['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'),
-                    distance=wbdistance)[0]
+                    distance=wbdistance,
+                    height=fzheight)[0]
     # Make long-form wingbeat column in dataframe (useful for stuff)
     dtemp['wb'] = 0
     dtemp.loc[wb, 'wb'] = 1
@@ -90,6 +93,9 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     
     # Make delay column
     dtemp['delay'] = delay[iabs]
+    
+    # Make trial column
+    dtemp['trial'] = i
     
     # Create phase vector by rescaling time based on wingbeats
     dtemp['phase'] = np.nan
@@ -142,7 +148,7 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
             dtemp.loc[dtemp['wb']==thiswb, 'multphase'] += ii
 
     # Remove regular wingbeats
-    dtemp = dtemp[dtemp['wbstate'].isin(['pre','stim','post'])]
+    # dtemp = dtemp[dtemp['wbstate'].isin(['pre','stim','post'])]
     
     # Clean EMG channels to NAN during stimulation period (to remove artifact)
     dtemp.loc[dtemp['stim']>stimthresh, channelsEMG] = np.nan
@@ -152,105 +158,98 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
         df = dtemp
     else:
         df = pd.concat([df,dtemp])
+
+da = df.copy()
+# Version without regular wingbeats
+df = df[df['wbstate'].isin(['pre','stim','post'])]
         
 
 #%%
 
-
-binPlot(df,
-        plotvars=['LDVM','LDLM','RDLM','RDVM'],
+binPlot(df.loc[df['delay']<20, ],
+        plotvars=['fz','mx'],
         groupvars=['wbstate','delay'],
         colorvar='delay',
         numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
         doSTD=False)
 
-# # Make bin vectors
-# nsamp = 300
-# prebin = np.linspace(0, wbBefore, nsamp*wbBefore)
-# stimbin = np.linspace(0, 1, nsamp)
-# postbin = np.linspace(0, wbAfter, nsamp*wbAfter)
 
-
-# # Color by delay controls
-# colormax = np.max(delay)
-
-
-# fig, ax = plt.subplots(len(channelsFT), 4,
-#                        figsize=(15,10), squeeze=False,
-#                        gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
-#                                     'wspace' : 0,
-#                                     'left' : 0.05,
-#                                     'right' : 1.0})
-# viridis = cmx.get_cmap('viridis')
-
-# # Loop over groups
-# # for name, group in reversed(tuple(df.groupby(['wbstate', 'delay']))):
-# for name, group in df.groupby(['wbstate', 'delay']):
-#     # Loop over plotting variables
-#     for i,varname in enumerate(channelsFT):
-#         # Which axis to plot on, make binned means
-#         # pre stim
-#         if name[0]=='pre':
-#             useax = 0
-#             temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
-#         # stim
-#         elif name[0]=='stim':
-#             useax = 1        
-#             temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
-#         # post stim
-#         else:
-#             useax = 2
-#             temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
-#         '''
-#         NOTE:
-#         The above code applies mean, std operation to EVERY column, including multphase
-#         This means I'm plotting the MEAN of multphase per bin. Not wrong, but worth knowing
-#         '''
-        
-            
-        
-#         # Plot STD shaded regions
-#         ax[i,useax].fill_between(temp['multphase']['mean'],
-#                                   temp[varname]['mean'] - temp[varname]['std'],
-#                                   temp[varname]['mean'] + temp[varname]['std'],
-#                                   color=viridis(name[1]/colormax)[0:3],
-#                                   alpha=0.5)
-#         # Plot mean lines
-#         ax[i,useax].plot(temp['multphase']['mean'],
-#                          temp[varname]['mean'],
-#                          color=viridis(name[1]/colormax)[0:3],
-#                          # alpha=0.7,
-#                          lw=0.5)
-#         # ax[i,useax].plot(group['multphase'],
-#         #                  group[varname],
-#         #                  color=viridis(name[1]/colormax)[0:3],
-#         #                  alpha=0.3)
-
-
-# for i,name in enumerate(channelsFT):
-#     # Remove yaxis labels for rightmost 2 plots
-#     ax[i,1].axes.get_yaxis().set_visible(False)
-#     ax[i,2].axes.get_yaxis().set_visible(False)
-#     # Set ylimits
-#     yl = ax[i,0].get_ylim()
-#     ax[i,1].set_ylim(yl)
-#     ax[i,2].set_ylim(yl)
-#     # Label y axes
-#     ax[i,0].set_ylabel(name)
-    
-    
-# # Colorbar
-# tickrange = np.unique(np.sort(delay))
-# cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
-#                     ax=ax[:],
-#                     shrink=0.4,
-#                     ticks=tickrange/colormax)
-# cbar.ax.set_yticklabels(list(map(str, tickrange)),
-#                         fontsize=7)
-# cbar.ax.set_title('delay (ms)')
 
 #%%
+
+# Look at all traces for single variable (mx) for single set of delays
+binPlot(df.loc[df['delay']==8 , ],
+        plotvars=['fz','mx'],
+        groupvars=['wbstate','delay','wb'],
+        colorvar='wb',
+        numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
+        doSTD=False,
+        doSummaryStat=False)
+
+
 
 # quickPlot(date, '009',
 #           tstart=10, tend=15,
 #           plotnames=['LDVM', 'LDLM','RDLM','RDVM','stim'])
+
+
+
+#%%
+trial = 13
+
+
+# Make aggregate control dictionary
+aggdict = {}
+for i in list(df.select_dtypes(include=np.number)): # loop over all numeric columns
+    aggdict[i] = 'mean'
+aggdict['wbstate'] = 'first'
+
+bob = da.loc[da['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
+
+
+# Plot wb mean values for this trial
+fig, ax = plt.subplots(len(channelsFT), 1)
+for i, varname in enumerate(channelsFT):
+    ax[i].plot(bob['Time'], bob[varname], marker='.')
+# Replot stimulus wingbeats as red
+for i, varname in enumerate(channelsFT):
+    ax[i].plot(bob.loc[bob['wbstate']=='stim', 'Time'],
+               bob.loc[bob['wbstate']=='stim', varname],
+               'r.')
+
+
+
+#%%
+
+# Make aggregate control dictionary
+aggdict = {}
+for i in list(df.select_dtypes(include=np.number)): # loop over all numeric columns
+    aggdict[i] = 'mean'
+aggdict['wbstate'] = 'first'
+
+
+# Figure setup
+fig, ax = plt.subplots(len(channelsFT), 1)
+statenames = np.unique(df['wbstate'])
+colormax = np.max(df['delay'])
+
+# Create aggregated dataframe
+dt = df.groupby(['wb','trial']).agg(aggdict)
+# Loop over pre, stim, post
+for j,state in enumerate(statenames):
+    # Loop over plot variables
+    for i, varname in enumerate(channelsFT):
+        data = dt.loc[dt['wbstate']==state, ]
+        ax[i].plot(np.ones(len(data)) + j,
+                   data[varname],
+                   '.',
+                   color = viridis(group['delay'].iloc[0]/colormax)[0:3])
+
+
+
+
+'''
+Bug fixes
+- Long pauses between wingbeats get counted as single wingbeats. Need to remove those pauses
+- Some traces (delay==4) grab more wingbeats than wbBefore requests (5 instead of 4)
+'''
