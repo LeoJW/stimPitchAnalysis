@@ -8,7 +8,9 @@ Created on Mon May 24 11:13:29 2021
 
 import numpy as np
 import matplotlib.pyplot as plt
-import time as systime
+import matplotlib.cm as cmx
+import matplotlib.gridspec as gridspec
+
 import os
 import scipy.io
 import csv
@@ -215,4 +217,85 @@ def quickPlot(date, trial, tstart=5, tend=10,
     plt.show()
 
         
+
+def binPlot(df,
+            plotvars, groupvars, colorvar,
+            numbins, wbBefore, wbAfter,
+            doSTD=True):
+    # Make bins
+    prebin = np.linspace(0, wbBefore, numbins*wbBefore)
+    stimbin = np.linspace(0, 1, numbins)
+    postbin = np.linspace(0, wbAfter, numbins*wbAfter)
+
+    # Color by delay controls
+    colormax = np.max(df[colorvar])
+    # Make plot
+    fig, ax = plt.subplots(len(plotvars), 4,
+                           figsize=(15,10), squeeze=False,
+                           gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
+                                        'wspace' : 0,
+                                        'left' : 0.05,
+                                        'right' : 1.0})
+    viridis = cmx.get_cmap('viridis')
+    
+    # Loop over groups
+    for name, group in df.groupby(groupvars):
+        # Loop over plotting variables
+        for i,varname in enumerate(plotvars):
+            # Which axis to plot on, make binned means
+            # pre stim
+            if name[0]=='pre':
+                useax = 0
+                temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
+            # stim
+            elif name[0]=='stim':
+                useax = 1        
+                temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
+            # post stim
+            else:
+                useax = 2
+                temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
+            '''
+            NOTE:
+            The above code applies mean, std operation to EVERY column, including multphase
+            This means I'm plotting the MEAN of multphase per bin. Not wrong, but worth knowing
+            '''
+            
+                
+            
+            # Plot STD shaded regions
+            if doSTD:
+                ax[i,useax].fill_between(temp['multphase']['mean'],
+                                          temp[varname]['mean'] - temp[varname]['std'],
+                                          temp[varname]['mean'] + temp[varname]['std'],
+                                          color=viridis(name[1]/colormax)[0:3],
+                                          alpha=0.5)
+            # Plot mean lines
+            ax[i,useax].plot(temp['multphase']['mean'],
+                             temp[varname]['mean'],
+                             color=viridis(name[1]/colormax)[0:3],
+                             lw=0.5)
+    
+    
+    for i,name in enumerate(plotvars):
+        # Remove yaxis labels for rightmost 2 plots
+        ax[i,1].axes.get_yaxis().set_visible(False)
+        ax[i,2].axes.get_yaxis().set_visible(False)
+        # Set ylimits
+        yl = ax[i,0].get_ylim()
+        ax[i,1].set_ylim(yl)
+        ax[i,2].set_ylim(yl)
+        # Label y axes
+        ax[i,0].set_ylabel(name)
+        
+        
+    # Colorbar
+    tickrange = np.sort(np.unique(df[colorvar]))
+    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                        ax=ax[:],
+                        shrink=0.4,
+                        ticks=tickrange/colormax)
+    cbar.ax.set_yticklabels(list(map(str, tickrange)),
+                            fontsize=7)
+    cbar.ax.set_title(colorvar)
         
