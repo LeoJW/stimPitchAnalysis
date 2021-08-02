@@ -19,9 +19,12 @@ from scipy.signal import find_peaks
 from scipy.stats import binned_statistic
 from pyfuncs import *
 
+import time as systime
+
+
 
 #%% Start with single individual
-date = '20210730'
+date = '20210708'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -64,6 +67,7 @@ goodTrials = whichTrials(date)
 pulsecount = 1
 # Loop over all, read in data
 for iabs, i in enumerate(goodTrials):
+    tic = systime.perf_counter()
     # Make string version of trial
     trial = str(i).zfill(3)
     # print to let user know what's up
@@ -114,15 +118,23 @@ for iabs, i in enumerate(goodTrials):
     dtemp['wbstate'] = 'regular'
     dtemp['wbrel'] = dtemp['wb']
     dtemp['pulse'] = 0
+    dtemp['stimdelay'] = 0
+    dtemp['stimphase'] = 0
     # Label wingbeats as being pre-, during, or post- stimulation
     for s in si:
         # get which wingbeat this stim is on
         stimwb = dtemp.loc[s, 'wb']
         
+        # Save the stim delay and phase
+        stimdelay = (s - np.argmax(dtemp['wb']==stimwb))/fsamp*1000 #in ms
+        stimphase = stimdelay*fsamp/1000/len(dtemp.loc[dtemp['wb']==stimwb])
+        
         #--- Pre-stim wingbeats
         # Grab indices of this pre-stim period
-        inds = np.where(np.logical_and(dtemp['wb']>=(stimwb-wbBefore),
-                                       dtemp['wb']<stimwb))[0]
+        inds = np.where(
+            np.logical_and(
+                np.logical_and((dtemp['wb']>=(stimwb-wbBefore)), (dtemp['wb']<stimwb)),
+                (dtemp['wbstate']!='stim')))[0]
         # Label as pre-stim period
         dtemp.loc[inds, 'wbstate'] = 'pre'
         dtemp.loc[inds, 'pulse'] = pulsecount
@@ -134,13 +146,18 @@ for iabs, i in enumerate(goodTrials):
                 
         #--- Stim wingbeat
         # label stim wingbeat
-        dtemp.loc[dtemp['wb']==stimwb, 'wbstate'] = 'stim'
-        dtemp.loc[dtemp['wb']==stimwb, 'wbrel'] = 0
-        dtemp.loc[dtemp['wb']==stimwb, 'pulse'] = pulsecount
+        inds = dtemp['wb']==stimwb
+        dtemp.loc[inds, 'wbstate'] = 'stim'
+        dtemp.loc[inds, 'wbrel'] = 0
+        dtemp.loc[inds, 'pulse'] = pulsecount
+        dtemp.loc[inds, 'stimdelay'] = stimdelay
+        dtemp.loc[inds, 'stimphase'] = stimphase
         
         #--- Post-stim wingbeats
-        inds = np.where(np.logical_and(dtemp['wb']<=(stimwb+wbAfter),
-                                       dtemp['wb']>stimwb))[0]
+        inds = np.where(
+            np.logical_and(
+                np.logical_and((dtemp['wb']<=(stimwb+wbAfter)), (dtemp['wb']>stimwb)),
+                (dtemp['wbstate']!='stim')))[0]
         # Label as post-stim period
         dtemp.loc[inds, 'wbstate'] = 'post'
         dtemp.loc[inds, 'pulse'] = pulsecount
@@ -165,12 +182,45 @@ for iabs, i in enumerate(goodTrials):
         df = dtemp
     else:
         df = pd.concat([df,dtemp])
+    print(systime.perf_counter()-tic)
         
 
 da = df.copy()
 # Version without regular wingbeats
 df = df[df['wbstate'].isin(['pre','stim','post'])]
         
+
+#%% Wingbeat mean torques vs. stimulus time/phase 
+
+plotchannels = ['mx','my','mz']
+
+# Make aggregate control dictionary
+aggdict = {}
+for i in list(df.select_dtypes(include=np.number)): # loop over all numeric columns
+    aggdict[i] = 'mean'
+aggdict['wbstate'] = 'first'
+
+# Keeping only stim wingbeats, take wingbeat means
+dt = df.loc[df['wbstate']=='stim',].groupby(['wb','trial']).agg(aggdict)
+
+# Setup plot
+fig, ax  = plt.subplots(3, 1, sharex='all', figsize=(4,8))
+viridis = cmx.get_cmap('viridis')
+
+# Loop over moments, plot
+for i,name in enumerate(plotchannels):
+    ax[i].plot(dt['stimphase'], dt[name], '.')
+
+# Plot aesthetics
+for i,name in enumerate(plotchannels):
+    ax[i].set_ylabel(name)
+ax[0].set_xlim((0, 1))
+ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
+# save
+plt.savefig(os.getcwd() + '/pics/' + date + '_stimphase_meanTorque.pdf',
+            dpi=500)
+
+
 
 #%%
 
@@ -204,14 +254,15 @@ binPlot(df.loc[df['delay']==18, ],
 
 
 
-#%% 
+#%% A quickplot cell
 
-quickPlot('20210730', '019',
-          tstart=1, tend=20,
-          plotnames=['stim','RDLM','LDLM','RDVM','LDVM','mx'])
+quickPlot('20210730', '027',
+          tstart=0, tend=20,
+          plotnames=['fz','comparator','LDVM','LDLM'])
+
 
 #%% Mean traces over time, stimulus marked 
-trial = 19
+trial = 27
 
 # Make aggregate control dictionary
 aggdict = {}
@@ -223,7 +274,7 @@ bob = da.loc[da['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
 
 
 # Plot wb mean values for this trial
-fig, ax = plt.subplots(len(channelsFT), 1)
+fig, ax = plt.subplots(len(channelsFT), 1, sharex='all')
 for i, varname in enumerate(channelsFT):
     ax[i].plot(bob['Time'], bob[varname], marker='.')
 # Replot stimulus wingbeats as red
@@ -234,6 +285,7 @@ for i, varname in enumerate(channelsFT):
 # Label axes
 for i, varname in enumerate(channelsFT):
     ax[i].set_ylabel(varname)
+
 
 
 #%%
