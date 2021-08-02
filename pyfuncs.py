@@ -84,21 +84,30 @@ def whichTrials(date, purpose='good'):
         print('No programGuide file for this moth! Make one plz')
         return
     # read file
+    names = []
     table = []
     reader = csv.reader(open(guide[0]))
     for row, record in enumerate(reader):
-        table.append(record)
+        names.append(record[0])
+        table.append([int(s) for i,s in enumerate(record) if i!=0 and s!=''])
     # if looking for good delay trial
     if purpose=='good':
         # Grab first good delay trial
-        start = int(table[2][1])
+        start = table[2][0]
         # grab last good delay trial
-        if len(table[3][1])==0:
-            end = int(table[2][2])
+        if len(table[3])==0:
+            end = table[2][1]
         else:
-            end = int(table[3][1])-1
-        return [start, end]
-    # Can extend to return other types of trials (stim characterization) eventually
+            end = table[3][1]
+        # Create range
+        trials = np.arange(start, end+1)
+        # Remove any characterization that may have happened in middle
+        if len(table[1])>2:
+            # Loop over how many periods may have happened
+            for i in np.arange(2, len(table[1]), 2):                
+                trials = [x for x in trials if x<table[1][i] or x>table[1][i+1]]
+        return trials
+    # TODO extend to return other types of trials (stim characterization) eventually
     
     
     
@@ -195,7 +204,11 @@ def add_interval(ax, xdata, ydata, caps="  ",
     
 
 def quickPlot(date, trial, tstart=5, tend=10,
-                               plotnames=['LDVM', 'LDLM','RDLM','RDVM']):
+              plotnames=['LDVM', 'LDLM','RDLM','RDVM'],
+              hpfCutoff = 70,
+              lpfCutoff = 500):
+    # Dumb hard-coded info
+    channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
     # Read empty data for FT
     biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True)
     bias = np.zeros((6,1))
@@ -204,24 +217,36 @@ def quickPlot(date, trial, tstart=5, tend=10,
     # Read actual data
     emg, emgnames, fsamp = readMatFile(date, trial, doFT=False)
     ftd, ftdnames, _     = readMatFile(date, trial, doFT=True)
+    # Filter data
+    for name in channelsEMG: # Filter EMG
+        emg[name] = butterfilt(emg[name], hpfCutoff, fsamp, order=4, bandtype='high')
+    for name in ftdnames: # Filter FT
+        ftd[name] = butterfilt(ftd[name], lpfCutoff, fsamp, order=4, bandtype='low')
+    # Remove stim periods from emg channels
+    inds = emg['stim'] > 3
+    for name in channelsEMG:
+        emg[name][inds] = np.nan
+    # Combine into single dict
+    full = {**emg, **ftd}
     # Find indices to plot
     inds = np.arange(tstart*fsamp, tend*fsamp)
     # Plot
     plt.figure()
     for i,n in enumerate(plotnames):
         # Rescale y to 0-1
-        # TODO: Rescaling not working! need to ignore stim artifact
-        yvec = emg[n][inds]
-        yvec = yvec*(np.max(yvec)-np.min(yvec))
-        plt.plot(emg['Time'][inds], yvec+i)
+        # TODO: Rescaling not working! need to remove stim artifact
+        yvec = full[n][inds]
+        yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
+        plt.plot(full['Time'][inds], yvec+i)
     plt.show()
 
         
-
+# binPlot: More general-purpose plotting of dataframes
 def binPlot(df,
             plotvars, groupvars, colorvar,
             numbins, wbBefore, wbAfter,
-            doSTD=True):
+            doSTD=True,
+            doSummaryStat=True):
     # Make bins
     prebin = np.linspace(0, wbBefore, numbins*wbBefore)
     stimbin = np.linspace(0, 1, numbins)
@@ -229,54 +254,168 @@ def binPlot(df,
 
     # Color by delay controls
     colormax = np.max(df[colorvar])
+    colormin = np.min(df[colorvar])
     # Make plot
     fig, ax = plt.subplots(len(plotvars), 4,
                            figsize=(15,10), squeeze=False,
                            gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
-                                        'wspace' : 0,
-                                        'left' : 0.05,
-                                        'right' : 1.0})
+                                        'wspace' : 0})
     viridis = cmx.get_cmap('viridis')
     
-    # Loop over groups
-    for name, group in df.groupby(groupvars):
-        # Loop over plotting variables
-        for i,varname in enumerate(plotvars):
-            # Which axis to plot on, make binned means
-            # pre stim
-            if name[0]=='pre':
-                useax = 0
-                temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
-            # stim
-            elif name[0]=='stim':
-                useax = 1        
-                temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
-            # post stim
-            else:
-                useax = 2
-                temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
-            '''
-            NOTE:
-            The above code applies mean, std operation to EVERY column, including multphase
-            This means I'm plotting the MEAN of multphase per bin. Not wrong, but worth knowing
-            '''
-            
-                
-            
-            # Plot STD shaded regions
-            if doSTD:
-                ax[i,useax].fill_between(temp['multphase']['mean'],
-                                          temp[varname]['mean'] - temp[varname]['std'],
-                                          temp[varname]['mean'] + temp[varname]['std'],
-                                          color=viridis(name[1]/colormax)[0:3],
-                                          alpha=0.5)
-            # Plot mean lines
-            ax[i,useax].plot(temp['multphase']['mean'],
-                             temp[varname]['mean'],
-                             color=viridis(name[1]/colormax)[0:3],
-                             lw=0.5)
+    # Version that takes summary stats:
+    if doSummaryStat:    
+        # Loop over groups
+        for name, group in df.groupby(groupvars):
+            # Loop over plotting variables
+            for i,varname in enumerate(plotvars):
+                    # Which axis to plot on, make binned means
+                    # pre stim
+                    if name[0]=='pre':
+                        useax = 0
+                        temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
+                    # stim
+                    elif name[0]=='stim':
+                        useax = 1        
+                        temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
+                    # post stim
+                    else:
+                        useax = 2
+                        temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
+                    '''
+                    NOTE:
+                    The above code applies mean, std operation to EVERY column, including multphase
+                    This means I'm plotting the MEAN of multphase per bin. Not wrong, but worth knowing
+                    '''
+                    
+                    # Plot STD shaded regions
+                    if doSTD:
+                        ax[i,useax].fill_between(temp['multphase']['mean'],
+                                                  temp[varname]['mean'] - temp[varname]['std'],
+                                                  temp[varname]['mean'] + temp[varname]['std'],
+                                                  color=viridis(name[1]/colormax)[0:3],
+                                                  alpha=0.5)
+                    # Plot mean lines
+                    ax[i,useax].plot(temp['multphase']['mean'],
+                                     temp[varname]['mean'],
+                                     color=viridis((name[1]-colormin)/colormax)[0:3],
+                                     lw=0.5)
+    # Version without summary stats
+    else:
+        # Loop over groups
+        for name, group in df.groupby(groupvars):
+            # Loop over plotting variables
+            for i,varname in enumerate(plotvars):
+                # Choose axis 
+                if name[0]=='pre':
+                    useax = 0
+                elif name[0]=='stim':
+                    useax = 1     
+                else:
+                    useax = 2
+                # Plot!
+                ax[i,useax].plot(group['multphase'],
+                                 group[varname],
+                                 color=viridis((group[colorvar].iloc[0]-colormin)/colormax)[0:3],
+                                 lw=0.5)
+                    
+    # Axis handling    
+    for i,name in enumerate(plotvars):
+        # Remove yaxis labels for rightmost 2 plots
+        ax[i,1].axes.get_yaxis().set_visible(False)
+        ax[i,2].axes.get_yaxis().set_visible(False)
+        # Set ylimits
+        yl = ax[i,0].get_ylim()
+        ax[i,0].set_ylim(yl)
+        ax[i,1].set_ylim(yl)
+        ax[i,2].set_ylim(yl)
+        # Label y axes
+        ax[i,0].set_ylabel(name)
+    # Colorbar handling
+    tickrange = np.sort(np.unique(df[colorvar]))
+    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                        ax=ax[:],
+                        shrink=0.4,
+                        ticks=(tickrange-colormin)/colormax)
+    cbar.ax.set_yticklabels(list(map(str, tickrange)),
+                            fontsize=7)
+    cbar.ax.set_title(colorvar)
+        
+
+
+# binPlotDiff: Version of binPlot that takes pre- and post- differences.
+#               Requires wbBefore be the same as wbAfter
+def binPlotDiff(df,
+            plotvars, groupvars, colorvar,
+            numbins, wbBefore, wbAfter,
+            doSTD=True,
+            doSummaryStat=True):
+    # Make bins
+    prebin = np.linspace(0, wbBefore, numbins*wbBefore)
+    stimbin = np.linspace(0, 1, numbins)
+    postbin = np.linspace(0, wbAfter, numbins*wbAfter)
+
+    # Color by delay controls
+    colormax = np.max(df[colorvar])
+    colormin = np.min(df[colorvar])
+    # Make plot
+    fig, ax = plt.subplots(len(plotvars), 4,
+                           figsize=(15,10), squeeze=False,
+                           gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
+                                        'wspace' : 0})
+    viridis = cmx.get_cmap('viridis')
     
-    
+    # Version that takes summary stats:
+    if doSummaryStat:    
+        # Loop over groups
+        for name, group in df.groupby(groupvars):
+            # Loop over plotting variables
+            for i,varname in enumerate(plotvars):
+                    # Which axis to plot on, make binned means
+                    # pre stim
+                    if name[0]=='pre':
+                        useax = 0
+                        temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
+                    # stim
+                    elif name[0]=='stim':
+                        useax = 1        
+                        temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
+                    # post stim
+                    else:
+                        useax = 2
+                        temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
+                    
+                    # Plot STD shaded regions
+                    if doSTD:
+                        ax[i,useax].fill_between(temp['multphase']['mean'],
+                                                  temp[varname]['mean'] - temp[varname]['std'],
+                                                  temp[varname]['mean'] + temp[varname]['std'],
+                                                  color=viridis(name[1]/colormax)[0:3],
+                                                  alpha=0.5)
+                    # Plot mean lines
+                    ax[i,useax].plot(temp['multphase']['mean'],
+                                     temp[varname]['mean'],
+                                     color=viridis((name[1]-colormin)/colormax)[0:3],
+                                     lw=0.5)
+    # Version without summary stats
+    else:
+        # Loop over groups
+        for name, group in df.groupby(groupvars):
+            # Loop over plotting variables
+            for i,varname in enumerate(plotvars):
+                # Choose axis 
+                if name[0]=='pre':
+                    useax = 0
+                elif name[0]=='stim':
+                    useax = 1     
+                else:
+                    useax = 2
+                # Plot!
+                ax[i,useax].plot(group['multphase'],
+                                 group[varname],
+                                 color=viridis((group[colorvar].iloc[0]-colormin)/colormax)[0:3],
+                                 lw=0.5)
+                    
+    # Axis handling    
     for i,name in enumerate(plotvars):
         # Remove yaxis labels for rightmost 2 plots
         ax[i,1].axes.get_yaxis().set_visible(False)
@@ -287,15 +426,15 @@ def binPlot(df,
         ax[i,2].set_ylim(yl)
         # Label y axes
         ax[i,0].set_ylabel(name)
-        
-        
-    # Colorbar
+    # Colorbar handling
     tickrange = np.sort(np.unique(df[colorvar]))
     cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
                         ax=ax[:],
                         shrink=0.4,
-                        ticks=tickrange/colormax)
+                        ticks=(tickrange-colormin)/colormax)
     cbar.ax.set_yticklabels(list(map(str, tickrange)),
                             fontsize=7)
     cbar.ax.set_title(colorvar)
         
+    
+    

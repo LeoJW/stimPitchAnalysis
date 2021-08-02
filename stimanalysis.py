@@ -21,10 +21,51 @@ from pyfuncs import *
 
 
 
+#%% whichTrials improvement
+def whichTrials(date, purpose='good'):
+    # Move to data directory
+    startdir = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(os.path.join(startdir, os.pardir + '/' + date))
+    # Check if programGuide exists
+    contents = os.listdir()
+    guide = [s for s in contents if 'program' in s]
+    # yell if it doesn't 
+    if len(guide)==0:
+        print('No programGuide file for this moth! Make one plz')
+        return
+    # read file
+    names = []
+    table = []
+    reader = csv.reader(open(guide[0]))
+    for row, record in enumerate(reader):
+        names.append(record[0])
+        table.append([int(s) for i,s in enumerate(record) if i!=0 and s!=''])
+    # if looking for good delay trial
+    if purpose=='good':
+        # Grab first good delay trial
+        start = table[2][0]
+        # grab last good delay trial
+        if len(table[3])==0:
+            end = table[2][1]
+        else:
+            end = table[3][1]
+        # Create range
+        trials = np.arange(start, end+1)
+        # Remove any characterization that may have happened in middle
+        if len(table[1])>2:
+            # Loop over how many periods may have happened
+            for i in np.arange(2, len(table[1]), 2):                
+                trials = [x for x in trials if x<table[1][i] or x>table[1][i+1]]
+        return trials
+
+
+trials = whichTrials('20210727')
+
 
 
 #%% Start with single individual
-date = '20210721'
+date = '20210727'
+# date = '20210708'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -51,7 +92,8 @@ stimthresh = 3 # threshold to count stim channel as "on"
 # Manually entered delays
 # TODO: Add spike-sorting, automatically find delay PER WINGBEAT
 # delay = [3, 10, 8, 2, 14, 1, 6, 4, 15, 29, 11, 20]
-delay = [10, 7, 15, 18, 22, 8, 3, 28, 12, 17, 9, 14, 21, 4, 4, 13, 12, 17, 19, 21, 25, 25, 11, 8, 6, 10, 9]
+# delay = [10, 7, 15, 18, 22, 8, 3, 28, 12, 17, 9, 14, 21, 4, 4, 13, 12, 17, 19, 21, 25, 25, 11, 8, 6, 10, 9]
+delay = [9, 2, 18, 16, 9, 12, 5, 18, 16, 20, 24, 2, 5, 21]
 
 
 #- Load data
@@ -62,6 +104,8 @@ for i in range(6):
     bias[i] = np.mean(biasdata[colnames[i+1]])
 # Read program guide to find good trials with delay
 goodTrials = whichTrials(date)
+
+pulsecount = 1
 # Loop over all, read in data
 for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     # Make string version of trial
@@ -112,7 +156,8 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     # (0->1, 1->2, etc rather than 0->1, 0->1)
     dtemp['multphase'] = dtemp['phase']
     dtemp['wbstate'] = 'regular'
-    dtemp['pulse'] = np.nan
+    dtemp['wbrel'] = dtemp['wb']
+    dtemp['pulse'] = 0
     # Label wingbeats as being pre-, during, or post- stimulation
     for s in si:
         # get which wingbeat this stim is on
@@ -124,40 +169,47 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
                                        dtemp['wb']<stimwb))[0]
         # Label as pre-stim period
         dtemp.loc[inds, 'wbstate'] = 'pre'
-        dtemp.loc[inds, 'pulse'] = s
+        dtemp.loc[inds, 'pulse'] = pulsecount
         # Change phase column to go from 0->x where x is number of "before" wingbeats
         for ii in np.arange(wbBefore):
             thiswb = stimwb - wbBefore + ii        
             dtemp.loc[dtemp['wb']==thiswb, 'multphase'] += ii
+            dtemp.loc[dtemp['wb']==thiswb, 'wbrel'] -= stimwb
                 
         #--- Stim wingbeat
         # label stim wingbeat
         dtemp.loc[dtemp['wb']==stimwb, 'wbstate'] = 'stim'
-        dtemp.loc[dtemp['wb']==stimwb, 'pulse'] = s
+        dtemp.loc[dtemp['wb']==stimwb, 'wbrel'] = 0
+        dtemp.loc[dtemp['wb']==stimwb, 'pulse'] = pulsecount
         
         #--- Post-stim wingbeats
         inds = np.where(np.logical_and(dtemp['wb']<=(stimwb+wbAfter),
                                        dtemp['wb']>stimwb))[0]
         # Label as post-stim period
         dtemp.loc[inds, 'wbstate'] = 'post'
-        dtemp.loc[inds, 'pulse'] = s 
+        dtemp.loc[inds, 'pulse'] = pulsecount
         # TODO: check if this ^ can be optimized. Can do all 3 in single line if needed
         # Set up phase so it goes from 0->x where x is number of "before" wingbeats
         for ii in np.arange(wbAfter):
             thiswb = stimwb + ii + 1
             dtemp.loc[dtemp['wb']==thiswb, 'multphase'] += ii
-
-    # Remove regular wingbeats
-    # dtemp = dtemp[dtemp['wbstate'].isin(['pre','stim','post'])]
+            dtemp.loc[dtemp['wb']==thiswb, 'wbrel'] -= stimwb
+        
+        # Increment global pulse counter
+        pulsecount += 1
+        
+        
     
     # Clean EMG channels to NAN during stimulation period (to remove artifact)
-    dtemp.loc[dtemp['stim']>stimthresh, channelsEMG] = np.nan
+    for name in channelsEMG:
+        dtemp.loc[dtemp['stim']>stimthresh, name] = np.nan
     
     # Add to full dataframe
     if i==goodTrials[0]:
         df = dtemp
     else:
         df = pd.concat([df,dtemp])
+        
 
 da = df.copy()
 # Version without regular wingbeats
@@ -178,8 +230,8 @@ binPlot(df.loc[df['delay']<20, ],
 #%%
 
 # Look at all traces for single variable (mx) for single set of delays
-binPlot(df.loc[df['delay']==8 , ],
-        plotvars=['fz','mx'],
+binPlot(df.loc[df['delay']==18, ],
+        plotvars=['mx'],
         groupvars=['wbstate','delay','wb'],
         colorvar='wb',
         numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
@@ -187,15 +239,25 @@ binPlot(df.loc[df['delay']==8 , ],
         doSummaryStat=False)
 
 
+# df.loc[np.logical_and(df['delay']==21, df['wbstate']=='stim'), 'mx'].agg(['mean','std','min','max'])
 
-# quickPlot(date, '009',
-#           tstart=10, tend=15,
-#           plotnames=['LDVM', 'LDLM','RDLM','RDVM','stim'])
+
+
+
+quickPlot(date, '003',
+          tstart=1, tend=15,
+          plotnames=['RDVM', 'RDLM','LDLM','LDVM','mx'])
+
+
+
+#%% Difference between traces 1wb pre, during, post stim
+
+
 
 
 
 #%%
-trial = 13
+trial = 9
 
 
 # Make aggregate control dictionary
@@ -228,23 +290,65 @@ for i in list(df.select_dtypes(include=np.number)): # loop over all numeric colu
 aggdict['wbstate'] = 'first'
 
 
-# Figure setup
-fig, ax = plt.subplots(len(channelsFT), 1)
-statenames = np.unique(df['wbstate'])
-colormax = np.max(df['delay'])
+# # Figure setup
+# fig, ax = plt.subplots(len(channelsFT), 1)
+# statenames = np.unique(df['wbstate'])
+# viridis = cmx.get_cmap('viridis')
+# colormax = np.max(df['delay'])
+
+# # Create aggregated dataframe
+# dt = df.groupby(['wb','trial']).agg(aggdict)
+# count = 0
+# for name, group in dt.groupby('delay'):
+#     # Loop over pre, stim, post
+#     for j,state in enumerate(statenames):
+#         # Loop over plot variables
+#         for i, varname in enumerate(channelsFT):
+#             data = group.loc[group['wbstate']==state, ]
+#             ax[i].plot(np.ones(len(data)) + j + 0.05*np.random.rand(len(data)) + count,
+#                        data[varname],
+#                        '.',
+#                        alpha=0.5,
+#                        color = viridis(data['delay'].iloc[0]/colormax)[0:3])
+
+#     count += 0.05
+
+import seaborn as sns
 
 # Create aggregated dataframe
 dt = df.groupby(['wb','trial']).agg(aggdict)
-# Loop over pre, stim, post
-for j,state in enumerate(statenames):
-    # Loop over plot variables
-    for i, varname in enumerate(channelsFT):
-        data = dt.loc[dt['wbstate']==state, ]
-        ax[i].plot(np.ones(len(data)) + j,
-                   data[varname],
-                   '.',
-                   color = viridis(group['delay'].iloc[0]/colormax)[0:3])
 
+dt = dt.loc[dt['wbrel']>-5,]
+
+sns.catplot(data=dt, 
+            kind="boxen",
+            x='wbrel',
+            y='mx',
+            hue='delay',
+            palette='viridis')
+
+
+
+#%% Pre, during, post differences
+
+dt = df.groupby(['wb','trial']).agg(aggdict)
+dt = dt.loc[dt['wbrel']>-5,]
+# Loop over non-numeric columns that aren't wb
+for name in [s for s in list(dt.select_dtypes(include=np.number)) 
+             if s not in 'wb' 
+             and s not in 'wbrel'
+             and s not in 'delay']:
+    dt[name] = dt[name] - np.roll(dt[name], 1)
+    
+# Keep only 1 wb pre, during, and post stim
+dt = dt.loc[np.logical_and(dt['wbrel']>=-1, dt['wbrel'] <=1), ]
+    
+# sns.catplot(data=dt, 
+#             kind="boxen",
+#             x='wbrel',
+#             y='mx',
+#             hue='delay',
+#             palette='viridis')
 
 
 
