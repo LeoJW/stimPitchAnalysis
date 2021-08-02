@@ -106,6 +106,12 @@ def whichTrials(date, purpose='good'):
             # Loop over how many periods may have happened
             for i in np.arange(2, len(table[1]), 2):                
                 trials = [x for x in trials if x<table[1][i] or x>table[1][i+1]]
+        # Remove any error trials, if they exist
+        if 'error' in names:
+            # Remove trials marked as error
+            for i in table[4]:
+                trials = [x for x in trials if x!=i]
+                
         return trials
     # TODO extend to return other types of trials (stim characterization) eventually
     
@@ -173,15 +179,6 @@ def cheby2filt(signal, cutoff, fs, rs=40, order=4, bandtype='low'):
 
 
 '''
-Create binned summary stat for list of x and y vectors 
-TODO: Write actually good documentation lol
-'''
-# def summaryStatBin(xlist, ylist, bins=100, stat):
-    
-
-
-
-'''
 Plotting utility for lines with character bars on end. Taken from
 https://stackoverflow.com/questions/52743119/line-end-styles-in-matplotlib
 '''
@@ -238,6 +235,8 @@ def quickPlot(date, trial, tstart=5, tend=10,
         yvec = full[n][inds]
         yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
         plt.plot(full['Time'][inds], yvec+i)
+    # aesthetics
+    plt.title(date + '-' + trial)
     plt.show()
 
         
@@ -435,6 +434,9 @@ def binPlotDiff(df,
     cbar.ax.set_yticklabels(list(map(str, tickrange)),
                             fontsize=7)
     cbar.ax.set_title(colorvar)
-        
+   
+
+
+# wbmeanplot: Plots selected variables      
     
     

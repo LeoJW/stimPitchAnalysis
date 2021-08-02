@@ -20,52 +20,8 @@ from scipy.stats import binned_statistic
 from pyfuncs import *
 
 
-
-#%% whichTrials improvement
-def whichTrials(date, purpose='good'):
-    # Move to data directory
-    startdir = os.path.dirname(os.path.realpath(__file__))
-    os.chdir(os.path.join(startdir, os.pardir + '/' + date))
-    # Check if programGuide exists
-    contents = os.listdir()
-    guide = [s for s in contents if 'program' in s]
-    # yell if it doesn't 
-    if len(guide)==0:
-        print('No programGuide file for this moth! Make one plz')
-        return
-    # read file
-    names = []
-    table = []
-    reader = csv.reader(open(guide[0]))
-    for row, record in enumerate(reader):
-        names.append(record[0])
-        table.append([int(s) for i,s in enumerate(record) if i!=0 and s!=''])
-    # if looking for good delay trial
-    if purpose=='good':
-        # Grab first good delay trial
-        start = table[2][0]
-        # grab last good delay trial
-        if len(table[3])==0:
-            end = table[2][1]
-        else:
-            end = table[3][1]
-        # Create range
-        trials = np.arange(start, end+1)
-        # Remove any characterization that may have happened in middle
-        if len(table[1])>2:
-            # Loop over how many periods may have happened
-            for i in np.arange(2, len(table[1]), 2):                
-                trials = [x for x in trials if x<table[1][i] or x>table[1][i+1]]
-        return trials
-
-
-trials = whichTrials('20210727')
-
-
-
 #%% Start with single individual
-date = '20210727'
-# date = '20210708'
+date = '20210730'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -93,7 +49,7 @@ stimthresh = 3 # threshold to count stim channel as "on"
 # TODO: Add spike-sorting, automatically find delay PER WINGBEAT
 # delay = [3, 10, 8, 2, 14, 1, 6, 4, 15, 29, 11, 20]
 # delay = [10, 7, 15, 18, 22, 8, 3, 28, 12, 17, 9, 14, 21, 4, 4, 13, 12, 17, 19, 21, 25, 25, 11, 8, 6, 10, 9]
-delay = [9, 2, 18, 16, 9, 12, 5, 18, 16, 20, 24, 2, 5, 21]
+# delay = [9, 2, 18, 16, 9, 12, 5, 18, 16, 20, 24, 2, 5, 21]
 
 
 #- Load data
@@ -107,7 +63,7 @@ goodTrials = whichTrials(date)
 
 pulsecount = 1
 # Loop over all, read in data
-for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
+for iabs, i in enumerate(goodTrials):
     # Make string version of trial
     trial = str(i).zfill(3)
     # print to let user know what's up
@@ -136,7 +92,7 @@ for iabs, i in enumerate(np.arange(goodTrials[0], goodTrials[1]+1)):
     dtemp['wb'] = np.cumsum(dtemp['wb'])
     
     # Make delay column
-    dtemp['delay'] = delay[iabs]
+    # dtemp['delay'] = delay[iabs]
     
     # Make trial column
     dtemp['trial'] = i
@@ -244,21 +200,18 @@ binPlot(df.loc[df['delay']==18, ],
 
 
 
-quickPlot(date, '003',
-          tstart=1, tend=15,
-          plotnames=['RDVM', 'RDLM','LDLM','LDVM','mx'])
-
-
-
 #%% Difference between traces 1wb pre, during, post stim
 
 
 
+#%% 
 
+quickPlot('20210730', '019',
+          tstart=1, tend=20,
+          plotnames=['stim','RDLM','LDLM','RDVM','LDVM','mx'])
 
-#%%
-trial = 9
-
+#%% Mean traces over time, stimulus marked 
+trial = 19
 
 # Make aggregate control dictionary
 aggdict = {}
@@ -278,7 +231,9 @@ for i, varname in enumerate(channelsFT):
     ax[i].plot(bob.loc[bob['wbstate']=='stim', 'Time'],
                bob.loc[bob['wbstate']=='stim', varname],
                'r.')
-
+# Label axes
+for i, varname in enumerate(channelsFT):
+    ax[i].set_ylabel(varname)
 
 
 #%%
@@ -289,29 +244,6 @@ for i in list(df.select_dtypes(include=np.number)): # loop over all numeric colu
     aggdict[i] = 'mean'
 aggdict['wbstate'] = 'first'
 
-
-# # Figure setup
-# fig, ax = plt.subplots(len(channelsFT), 1)
-# statenames = np.unique(df['wbstate'])
-# viridis = cmx.get_cmap('viridis')
-# colormax = np.max(df['delay'])
-
-# # Create aggregated dataframe
-# dt = df.groupby(['wb','trial']).agg(aggdict)
-# count = 0
-# for name, group in dt.groupby('delay'):
-#     # Loop over pre, stim, post
-#     for j,state in enumerate(statenames):
-#         # Loop over plot variables
-#         for i, varname in enumerate(channelsFT):
-#             data = group.loc[group['wbstate']==state, ]
-#             ax[i].plot(np.ones(len(data)) + j + 0.05*np.random.rand(len(data)) + count,
-#                        data[varname],
-#                        '.',
-#                        alpha=0.5,
-#                        color = viridis(data['delay'].iloc[0]/colormax)[0:3])
-
-#     count += 0.05
 
 import seaborn as sns
 
