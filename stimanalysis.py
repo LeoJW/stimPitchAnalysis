@@ -24,7 +24,7 @@ import time as systime
 
 
 #%% Start with single individual
-date = '20210708'
+date = '20210803_1'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -190,6 +190,17 @@ da = df.copy()
 df = df[df['wbstate'].isin(['pre','stim','post'])]
         
 
+#%% Pull in spike times from spike sorting
+from pyfuncs import *
+spikes = readSpikeSort(date)
+
+
+# Flip spike times to work on the -len : 0 time scale
+
+# Remove spike times that fall on stim pulse
+
+
+
 #%% Wingbeat mean torques vs. stimulus time/phase 
 
 plotchannels = ['mx','my','mz']
@@ -203,8 +214,12 @@ aggdict['wbstate'] = 'first'
 # Keeping only stim wingbeats, take wingbeat means
 dt = df.loc[df['wbstate']=='stim',].groupby(['wb','trial']).agg(aggdict)
 
+# Remove DLM stimulation trials from 20210801
+if date == '20210801':
+    dt = dt.loc[~dt['trial'].isin([5,6,7,8]), ]
+
 # Setup plot
-fig, ax  = plt.subplots(3, 1, sharex='all', figsize=(4,8))
+fig, ax  = plt.subplots(3, 1, sharex='all', figsize=(4,8), gridspec_kw={'left' : 0.16})
 viridis = cmx.get_cmap('viridis')
 
 # Loop over moments, plot
@@ -217,8 +232,8 @@ for i,name in enumerate(plotchannels):
 ax[0].set_xlim((0, 1))
 ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 # save
-plt.savefig(os.getcwd() + '/pics/' + date + '_stimphase_meanTorque.pdf',
-            dpi=500)
+# plt.savefig(os.getcwd() + '/pics/' + date + '_stimphase_meanTorque.pdf',
+#             dpi=500)
 
 
 
@@ -232,9 +247,6 @@ binPlot(df.loc[df['delay']<20, ],
         doSTD=False)
 
 
-
-#%%
-
 # Look at all traces for single variable (mx) for single set of delays
 binPlot(df.loc[df['delay']==18, ],
         plotvars=['mx'],
@@ -245,24 +257,19 @@ binPlot(df.loc[df['delay']==18, ],
         doSummaryStat=False)
 
 
-# df.loc[np.logical_and(df['delay']==21, df['wbstate']=='stim'), 'mx'].agg(['mean','std','min','max'])
-
-
-
-
 #%% Difference between traces 1wb pre, during, post stim
 
 
 
 #%% A quickplot cell
 
-quickPlot('20210730', '027',
+quickPlot('20210803_1', '014',
           tstart=0, tend=20,
-          plotnames=['fz','comparator','LDVM','LDLM'])
+          plotnames=['stim','comparator','LDLM','RDLM','mx'])
 
 
 #%% Mean traces over time, stimulus marked 
-trial = 27
+trial = 11
 
 # Make aggregate control dictionary
 aggdict = {}
@@ -340,4 +347,12 @@ dt = dt.loc[np.logical_and(dt['wbrel']>=-1, dt['wbrel'] <=1), ]
 Bug fixes
 - Long pauses between wingbeats get counted as single wingbeats. Need to remove those pauses
 - Some traces (delay==4) grab more wingbeats than wbBefore requests (5 instead of 4)
+
+TODO
+- Optimize readin/processing; way too slow right now
+- Move to non-pandas version? Make pandas dataframe only after processing?
+- Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
+- Create mean before-stim-after plots
+
+- Mean vs stim phase: Change to also do DIFF from previous wingbeat
 '''

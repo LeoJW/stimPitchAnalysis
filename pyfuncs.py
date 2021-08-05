@@ -29,10 +29,13 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
         recname = 'FT'
     else:
         recname = 'recording'
+    # Handle underscores for dates with more than 1 moth
+    if '_' in date:
+        date = date[:len(date)-2]
     # Set up filename
     fname = 'Moth_EMG_' + recname + '_' + date + '_' + trial
     # Load mat file
-    mat = scipy.io.loadmat(fname + '.mat')        
+    mat = scipy.io.loadmat(fname + '.mat')
     # Grab filename from first dict key that doesn't start with '_'
     fname = next((k for k in mat.keys() if k[0]!='_'), None)    
     # Grab data
@@ -69,6 +72,55 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
     os.chdir(startdir)
     # Return
     return d, names, fsamp
+
+def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
+    # Jump out to spikesort dir
+    startdir = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(os.path.join(startdir, os.pardir, 'spikesort'))
+    # Jump into dir for this date
+    os.chdir(date)
+    # Get file names in this dir, ignoring notes
+    filenames = [s for s in os.listdir() if s != 'note']
+    
+    # preallocate 
+    spikes = {}
+    for m in muscles:
+        spikes[m] = []
+        spikes[m + '_sorttype'] = []
+    # Loop over muscles
+    for m in muscles:
+        # Find files for this muscle
+        mfiles = [s for s in filenames
+                  if m in s
+                  if 'sort' in s]
+        # If no files for this muscle, yell and continue
+        if len(mfiles) == 0:
+            print(m + ' has no sorted files!')
+            continue
+        # Loop over all sorted files 
+        # (usually 1, may be more if _up or _down variant)
+        for sortfile in mfiles:
+            # Determine type of sort (up, down, or regular)
+            if 'up' in sortfile:
+                thistype = 'up'
+            elif 'down' in sortfile:
+                thistype = 'down'
+            else:
+                thistype = 'reg'
+            # Read in file
+            mat = scipy.io.loadmat(sortfile)
+            # Loop over "channels" (actually just trials) and grab data
+            for i,ch in enumerate([s for s in list(mat) if '__' not in s]):
+                temparray = np.column_stack((mat[ch][:,1], i*np.ones(len(mat[ch][:,1]))))
+                # save spike times
+                spikes[m].append(temparray)
+                # Save sort type
+                spikes[m + '_sorttype'].append(thistype)
+        # Do a last vstack of all the nparrays in a list
+        spikes[m] = np.vstack(spikes[m])
+    return spikes
+                
+        
     
 
 # grab which trials for this moth are good and have delay
@@ -98,7 +150,7 @@ def whichTrials(date, purpose='good'):
         if len(table[3])==0:
             end = table[2][1]
         else:
-            end = table[3][1]
+            end = table[3][0]
         # Create range
         trials = np.arange(start, end+1)
         # Remove any characterization that may have happened in middle

@@ -19,11 +19,15 @@ sortChannels = ['LDVM','LDLM','RDLM','RDVM']
 # Move back one directory
 startdir = os.path.dirname(os.path.realpath(__file__))
 os.chdir(os.path.join(startdir, '..'))
+# Check if spikesort folder exists in this main dir, make it if not
+if not any('spikesort' in s for s in os.listdir()):
+    os.mkdir('spikesort')
+# Save where spikesort dir is
+spikesortdir = os.path.join(os.getcwd(), 'spikesort')
 # Grab all directories with "202107" in name
 outerdir = os.getcwd()
 folders = os.listdir()
 trialdirs = [s for s in folders if '202107' in s]
-
 
 
 
@@ -37,9 +41,6 @@ for dircount,d in enumerate(trialdirs):
     print(d)
     print('   ' + str(dircount+1) + '/' + str(len(trialdirs)), end=' ')
     
-    # Check if spikesort folder exists, make it if not
-    if not any('spikesort' in s for s in os.listdir()):
-        os.mkdir('spikesort')
     
     # Get names of all .mat files (that aren't empty or Control)
     mfiles = [s for s in os.listdir()
@@ -83,7 +84,12 @@ for dircount,d in enumerate(trialdirs):
             final[ch][ii,0:np.shape(datamat[:,col])[0]] = np.transpose(datamat[:,col])
         
     # Jump into spikesort folder
-    os.chdir(os.path.join(outerdir, d, 'spikesort'))
+    os.chdir(spikesortdir)
+    # Check if folder for this date exists, add if not
+    if not any(d in s for s in os.listdir()):
+        os.mkdir(d)
+    # jump into date dir in spikesortdir
+    os.chdir(d)
     # Save each channel as its own mat file
     for ch in sortChannels:
         scipy.io.savemat(ch+'_raw.mat', {'file' : final[ch]})
