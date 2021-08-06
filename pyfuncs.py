@@ -73,6 +73,9 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
     # Return
     return d, names, fsamp
 
+
+
+# Grab spike-sorted data, consisting of spike times and waveforms
 def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
     # Jump out to spikesort dir
     startdir = os.path.dirname(os.path.realpath(__file__))
@@ -82,11 +85,13 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
     # Get file names in this dir, ignoring notes
     filenames = [s for s in os.listdir() if s != 'note']
     
-    # preallocate 
+    # Prepare storage variables
     spikes = {}
+    waveforms = {}
     for m in muscles:
         spikes[m] = []
         spikes[m + '_sorttype'] = []
+        waveforms[m] = []
     # Loop over muscles
     for m in muscles:
         # Find files for this muscle
@@ -110,17 +115,28 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
             # Read in file
             mat = scipy.io.loadmat(sortfile)
             # Loop over "channels" (actually just trials) and grab data
-            for i,ch in enumerate([s for s in list(mat) if '__' not in s]):
-                temparray = np.column_stack((mat[ch][:,1], i*np.ones(len(mat[ch][:,1]))))
+            for ch in [s for s in list(mat) if '__' not in s]:
+                # grab channel/trial number 
+                chnumber = int(ch[-2:])
+                # grab spike times and put together with trial number
+                temparray = np.column_stack((mat[ch][:,1],
+                                             chnumber*np.ones(len(mat[ch][:,1]))))
+                # Remove any obvious stim artifacts (high amplitude!)
+                rminds = np.where(np.any(mat[ch][:,2:] > 9, axis=1))[0]
+                np.delete(temparray, (rminds), axis=0)
+                np.delete(mat[ch], (rminds), axis=0)
+                
                 # save spike times
                 spikes[m].append(temparray)
                 # Save sort type
                 spikes[m + '_sorttype'].append(thistype)
+                # save waveforms
+                waveforms[m].append(mat[ch][:,2:])
+                
         # Do a last vstack of all the nparrays in a list
         spikes[m] = np.vstack(spikes[m])
-    return spikes
-                
-        
+        waveforms[m] = np.vstack(waveforms[m])
+    return spikes, waveforms
     
 
 # grab which trials for this moth are good and have delay

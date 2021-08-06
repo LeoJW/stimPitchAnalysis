@@ -48,13 +48,6 @@ fzheight = 0.05
 stimthresh = 3 # threshold to count stim channel as "on"
 
 
-# Manually entered delays
-# TODO: Add spike-sorting, automatically find delay PER WINGBEAT
-# delay = [3, 10, 8, 2, 14, 1, 6, 4, 15, 29, 11, 20]
-# delay = [10, 7, 15, 18, 22, 8, 3, 28, 12, 17, 9, 14, 21, 4, 4, 13, 12, 17, 19, 21, 25, 25, 11, 8, 6, 10, 9]
-# delay = [9, 2, 18, 16, 9, 12, 5, 18, 16, 20, 24, 2, 5, 21]
-
-
 #- Load data
 # Read empty FT for bias
 biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True)
@@ -64,9 +57,12 @@ for i in range(6):
 # Read program guide to find good trials with delay
 goodTrials = whichTrials(date)
 
+# Create variables for loop
 pulsecount = 1
+stiminds = [[] for x in range(goodTrials[-1])]
+
 # Loop over all, read in data
-for iabs, i in enumerate(goodTrials):
+for i in goodTrials:
     tic = systime.perf_counter()
     # Make string version of trial
     trial = str(i).zfill(3)
@@ -95,9 +91,6 @@ for iabs, i in enumerate(goodTrials):
     dtemp.loc[wb, 'wb'] = 1
     dtemp['wb'] = np.cumsum(dtemp['wb'])
     
-    # Make delay column
-    # dtemp['delay'] = delay[iabs]
-    
     # Make trial column
     dtemp['trial'] = i
     
@@ -110,7 +103,7 @@ for iabs, i in enumerate(goodTrials):
     # Get stim indices
     si = np.where(np.logical_and(dtemp['stim']>3,
                                  np.roll(dtemp['stim']<3, 1)))[0]
-    
+    stiminds[i-1] = si
 
     # Waste memory and create second phase column to count multiple wingbeats 
     # (0->1, 1->2, etc rather than 0->1, 0->1)
@@ -191,14 +184,155 @@ df = df[df['wbstate'].isin(['pre','stim','post'])]
         
 
 #%% Pull in spike times from spike sorting
-from pyfuncs import *
-spikes = readSpikeSort(date)
+
+# Constants
+stimwindow = 0.001
 
 
-# Flip spike times to work on the -len : 0 time scale
+def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
+                  stimAmplitudeThresh=4):
+    # Jump out to spikesort dir
+    startdir = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(os.path.join(startdir, os.pardir, 'spikesort'))
+    # Jump into dir for this date
+    os.chdir(date)
+    # Get file names in this dir, ignoring notes
+    filenames = [s for s in os.listdir() if s != 'note']
+    
+    # Prepare storage variables
+    spikes = {}
+    waveforms = {}
+    for m in muscles:
+        spikes[m] = []
+        spikes[m + '_sorttype'] = []
+        waveforms[m] = []
+    # Loop over muscles
+    for m in muscles:
+        # Find files for this muscle
+        mfiles = [s for s in filenames
+                  if m in s
+                  if 'sort' in s]
+        # If no files for this muscle, yell and continue
+        if len(mfiles) == 0:
+            print(m + ' has no sorted files!')
+            continue
+        # Loop over all sorted files 
+        # (usually 1, may be more if _up or _down variant)
+        for sortfile in mfiles:
+            # Determine type of sort (up, down, or regular)
+            if 'up' in sortfile:
+                thistype = 'up'
+            elif 'down' in sortfile:
+                thistype = 'down'
+            else:
+                thistype = 'reg'
+            # Read in file
+            mat = scipy.io.loadmat(sortfile)
+            # Loop over "channels" (actually just trials) and grab data
+            for ch in [s for s in list(mat) if '__' not in s]:
+                # grab channel/trial number 
+                chnumber = int(ch[-2:])
+                # grab spike times and put together with trial number
+                temparray = np.column_stack((mat[ch][:,1],
+                                             chnumber*np.ones(len(mat[ch][:,1]))))
+                # Remove any obvious stim artifacts (high amplitude!)
+                rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
+                temparray = np.delete(temparray, (rminds), axis=0)
+                mat[ch] = np.delete(mat[ch], (rminds), axis=0)
+                
+                # save spike times
+                spikes[m].append(temparray)
+                # Save sort type
+                spikes[m + '_sorttype'].append(thistype)
+                # save waveforms
+                waveforms[m].append(mat[ch][:,2:])
+                
+        # Do a last vstack of all the nparrays in a list
+        spikes[m] = np.vstack(spikes[m])
+        waveforms[m] = np.vstack(waveforms[m])
+    return spikes, waveforms
+                
 
-# Remove spike times that fall on stim pulse
+# Load spike times for this date
+spikes, waveforms = readSpikeSort(date)
 
+
+closespikes = {}
+susrows = {}
+for m in channelsEMG:
+    closespikes[m] = []
+    susrows[m] = []
+
+for m in channelsEMG:
+    # Loop over trials that are also in goodtrials
+    for i in list(set(np.unique(spikes[m][:,1])).intersection(goodTrials)):
+        #--- Flip spike times to work on the -len : 0 time scale
+        # Get time length of this trial
+        tlength = np.min(da.loc[da['trial']==i, 'Time'])
+        # Get inds of this trial for spikes
+        inds = spikes[m][:,1]==i
+        spikes[m][inds,0] = spikes[m][inds,0] + tlength
+        
+        #--- Remove spike times that fall within threshold of stim pulse
+        stimtimes = da.loc[da['trial']==i, 'Time'][stiminds[i]].to_numpy()
+        closest = np.ones(len(stimtimes), dtype=int)
+        for j in range(len(stimtimes)):
+            spikeDistance = abs(spikes[m][inds,0] - stimtimes[j])
+            closestSpike = np.argmin(spikeDistance)
+            # If none actually met condition, change value to reflect that
+            if spikeDistance[closestSpike] > stimwindow:
+                closest[j] = -1
+            # Otherwise save spike that was closest
+            else:
+                closest[j] = np.where(inds)[0][closestSpike]                
+            
+        closespikes[m].extend(closest[closest != -1].tolist())
+        
+        
+    # As a check: Plot all trials meeting test condiiton for being stim spikes
+    plt.figure()
+    susrows[m].extend(np.where(np.min(waveforms[m], axis=1) < -0.4)[0])
+    for j in susrows[m]:
+        plt.plot(waveforms[m][j,:])
+    plt.title(m)
+    
+    # Other check: Plot waveforms meeting closeness condition for being stim
+    # Remove empties
+    closespikes[m] = [x for x in closespikes[m] if x != []]
+    plt.figure()
+    for j in closespikes[m]:
+        plt.plot(waveforms[m][j,:])
+    plt.title(m)
+    
+    
+    
+
+
+# Test: plot distribution of spikes around stimulus
+
+
+#%% Test: plot random snippet with spikes marked
+
+da['stim'] = 0
+for i in 
+da['stim'][]
+
+pdata = da.loc[(da['trial']==10) & (da['Time']>-10) & (da['Time']<-8), ]
+
+plt.figure()
+plt.plot(pdata['Time'], pdata['LDVM'])
+
+
+
+
+#%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
+
+
+#%% Get & plot relative spike times before, during, and after stimulus
+
+#%% Plot how mean torques/forces vary with relative spike times DUE TO STIMULUS
+
+#%% show variance in induced AP by superimposing 
 
 
 #%% Wingbeat mean torques vs. stimulus time/phase 
@@ -236,25 +370,6 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 #             dpi=500)
 
 
-
-#%%
-
-binPlot(df.loc[df['delay']<20, ],
-        plotvars=['fz','mx'],
-        groupvars=['wbstate','delay'],
-        colorvar='delay',
-        numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
-        doSTD=False)
-
-
-# Look at all traces for single variable (mx) for single set of delays
-binPlot(df.loc[df['delay']==18, ],
-        plotvars=['mx'],
-        groupvars=['wbstate','delay','wb'],
-        colorvar='wb',
-        numbins=300, wbBefore=wbBefore, wbAfter=wbAfter,
-        doSTD=False,
-        doSummaryStat=False)
 
 
 #%% Difference between traces 1wb pre, during, post stim
@@ -294,52 +409,6 @@ for i, varname in enumerate(channelsFT):
     ax[i].set_ylabel(varname)
 
 
-
-#%%
-
-# Make aggregate control dictionary
-aggdict = {}
-for i in list(df.select_dtypes(include=np.number)): # loop over all numeric columns
-    aggdict[i] = 'mean'
-aggdict['wbstate'] = 'first'
-
-
-import seaborn as sns
-
-# Create aggregated dataframe
-dt = df.groupby(['wb','trial']).agg(aggdict)
-
-dt = dt.loc[dt['wbrel']>-5,]
-
-sns.catplot(data=dt, 
-            kind="boxen",
-            x='wbrel',
-            y='mx',
-            hue='delay',
-            palette='viridis')
-
-
-
-#%% Pre, during, post differences
-
-dt = df.groupby(['wb','trial']).agg(aggdict)
-dt = dt.loc[dt['wbrel']>-5,]
-# Loop over non-numeric columns that aren't wb
-for name in [s for s in list(dt.select_dtypes(include=np.number)) 
-             if s not in 'wb' 
-             and s not in 'wbrel'
-             and s not in 'delay']:
-    dt[name] = dt[name] - np.roll(dt[name], 1)
-    
-# Keep only 1 wb pre, during, and post stim
-dt = dt.loc[np.logical_and(dt['wbrel']>=-1, dt['wbrel'] <=1), ]
-    
-# sns.catplot(data=dt, 
-#             kind="boxen",
-#             x='wbrel',
-#             y='mx',
-#             hue='delay',
-#             palette='viridis')
 
 
 
