@@ -207,11 +207,14 @@ for m in channelsEMG:
     closespikes[m] = []
     susrows[m] = []
     # New columns in dataframes for spike times (st's)
-    da[m+'_st'] = 0.0
-    df[m+'_st'] = 0.0
+    da[m+'_st'] = False
+    df[m+'_st'] = False
 
 # Loop over muscles
 for m in channelsEMG:
+    # Make boolean array that'll be true wherever spikes are
+    spikeBoolVec = np.zeros(len(da), dtype=bool)
+    
     # Loop over trials that are also in goodtrials
     for i in list(set(np.unique(spikes[m][:,1])).intersection(goodTrials)):
         # Get inds that are in this trial for spikes and main dataframes
@@ -236,13 +239,8 @@ for m in channelsEMG:
             # Otherwise save spike that was closest
             else:
                 closest[j] = np.where(inds)[0][closestSpike]                
-            
+        # Save closest spikes
         closespikes[m].extend(closest[closest != -1].tolist())
-        
-        #--- Save to large vector of spike times in dataframe
-        # da.loc[ida, m+'_st'][stiminds[i]] = stimtimes
-        da.loc[(ida) &
-               (da.index.isin(stiminds[i])), m+'_st']
         
         
     # As a check: Plot waveforms meeting closeness condition for being stim
@@ -260,26 +258,25 @@ for m in channelsEMG:
 #%%
 
 tic = systime.perf_counter()
-da.loc[(ida) & (da.index.isin(stiminds[i])), m+'_st'] = 10
+newind = np.zeros(len(ida), dtype=bool)
+newind[stiminds[i]+np.argmax(ida)] = True
+da.loc[(ida) & (newind), m+'_st']
 toc = systime.perf_counter()
 print(toc-tic)
 
 
 tic = systime.perf_counter()
-da.loc[ida, m+'_st'][stiminds[i]] = 2
+da.loc[ida, m+'_st'][stiminds[i]]
 toc = systime.perf_counter()
 print(toc-tic)
 
 tic = systime.perf_counter()
-da[m+'_st'][ida][stiminds[i]] = 3
+da[m+'_st'][ida][stiminds[i]]
 toc = systime.perf_counter()
 print(toc-tic)
 
 
-tic = systime.perf_counter()
-da.loc[ida].loc[stiminds[i], m+'_st'] = 4
-toc = systime.perf_counter()
-print(toc-tic)
+
 
 #%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
 
