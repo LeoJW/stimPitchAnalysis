@@ -198,24 +198,34 @@ stimwindow = 0.001 # s, spikes closer than this time to stim are removed
 spikes, waveforms = readSpikeSort(date)
 
 
+
+# Preparation, preallocation
 closespikes = {}
 susrows = {}
 for m in channelsEMG:
+    # dicts to grab spikes too close to stim
     closespikes[m] = []
     susrows[m] = []
+    # New columns in dataframes for spike times (st's)
+    da[m+'_st'] = 0.0
+    df[m+'_st'] = 0.0
 
+# Loop over muscles
 for m in channelsEMG:
     # Loop over trials that are also in goodtrials
     for i in list(set(np.unique(spikes[m][:,1])).intersection(goodTrials)):
+        # Get inds that are in this trial for spikes and main dataframes
+        inds = spikes[m][:,1]==i
+        ida = da['trial']==i
+        
         #--- Flip spike times to work on the -len : 0 time scale
         # Get time length of this trial
-        tlength = np.min(da.loc[da['trial']==i, 'Time'])
-        # Get inds of this trial for spikes
-        inds = spikes[m][:,1]==i
+        tlength = np.min(da.loc[ida, 'Time'])
+        # Flip times
         spikes[m][inds,0] = spikes[m][inds,0] + tlength
         
         #--- Remove spike times that fall within threshold of stim pulse
-        stimtimes = da.loc[da['trial']==i, 'Time'][stiminds[i]].to_numpy()
+        stimtimes = da.loc[ida, 'Time'][stiminds[i]].to_numpy()
         closest = np.ones(len(stimtimes), dtype=int)
         for j in range(len(stimtimes)):
             spikeDistance = abs(spikes[m][inds,0] - stimtimes[j])
@@ -229,19 +239,14 @@ for m in channelsEMG:
             
         closespikes[m].extend(closest[closest != -1].tolist())
         
-        #--- Save to large vector of spike inds in dataframe
+        #--- Save to large vector of spike times in dataframe
+        # da.loc[ida, m+'_st'][stiminds[i]] = stimtimes
+        da.loc[(ida) &
+               (da.index.isin(stiminds[i])), m+'_st']
         
         
-    # # As a check: Plot all trials meeting test condiiton for being stim spikes
-    plt.figure()
-    susrows[m].extend(np.where(np.min(waveforms[m], axis=1) < -0.4)[0])
-    for j in susrows[m]:
-        plt.plot(waveforms[m][j,:])
-    plt.title(m)
-    
-    # # Other check: Plot waveforms meeting closeness condition for being stim
-    # Remove empties
-    closespikes[m] = [x for x in closespikes[m] if x != []]
+    # As a check: Plot waveforms meeting closeness condition for being stim
+    closespikes[m] = [x for x in closespikes[m] if x != []] # Remove empties
     plt.figure()
     for j in closespikes[m]:
         plt.plot(waveforms[m][j,:])
@@ -252,24 +257,29 @@ for m in channelsEMG:
 
 # Test: plot distribution of spikes around stimulus
 
+#%%
 
-#%% Test: plot random snippet with spikes marked
-
-m = 'LDVM'
-tr = 10
-
-tmin = -10
-tmax = -9.5
-
-pdata = da.loc[(da['trial']==tr) & (da['Time']>tmin) & (da['Time']<tmax), ]
-spdata = spikes[m][spikes[m][:,1]==tr, 0]
-spdata = spdata[(spdata>tmin) & (spdata<tmax)]
-
-plt.figure()
-plt.plot(pdata['Time'], pdata[m])
-plt.vlines(spdata, ymin=-0.1, ymax=0.2)
+tic = systime.perf_counter()
+da.loc[(ida) & (da.index.isin(stiminds[i])), m+'_st'] = 10
+toc = systime.perf_counter()
+print(toc-tic)
 
 
+tic = systime.perf_counter()
+da.loc[ida, m+'_st'][stiminds[i]] = 2
+toc = systime.perf_counter()
+print(toc-tic)
+
+tic = systime.perf_counter()
+da[m+'_st'][ida][stiminds[i]] = 3
+toc = systime.perf_counter()
+print(toc-tic)
+
+
+tic = systime.perf_counter()
+da.loc[ida].loc[stiminds[i], m+'_st'] = 4
+toc = systime.perf_counter()
+print(toc-tic)
 
 #%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
 
