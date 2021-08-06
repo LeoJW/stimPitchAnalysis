@@ -59,7 +59,12 @@ goodTrials = whichTrials(date)
 
 # Create variables for loop
 pulsecount = 1
-stiminds = [[] for x in range(goodTrials[-1])]
+stiminds = [[] for x in range(goodTrials[-1]+1)] 
+''' 
+^Note the +1: For trials I'm sticking to a 1-indexing convention.
+This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
+given the way the trials were originally numbered!
+'''
 
 # Loop over all, read in data
 for i in goodTrials:
@@ -103,7 +108,7 @@ for i in goodTrials:
     # Get stim indices
     si = np.where(np.logical_and(dtemp['stim']>3,
                                  np.roll(dtemp['stim']<3, 1)))[0]
-    stiminds[i-1] = si
+    stiminds[i] = si
 
     # Waste memory and create second phase column to count multiple wingbeats 
     # (0->1, 1->2, etc rather than 0->1, 0->1)
@@ -186,72 +191,8 @@ df = df[df['wbstate'].isin(['pre','stim','post'])]
 #%% Pull in spike times from spike sorting
 
 # Constants
-stimwindow = 0.001
+stimwindow = 0.001 # s, spikes closer than this time to stim are removed
 
-
-def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
-                  stimAmplitudeThresh=4):
-    # Jump out to spikesort dir
-    startdir = os.path.dirname(os.path.realpath(__file__))
-    os.chdir(os.path.join(startdir, os.pardir, 'spikesort'))
-    # Jump into dir for this date
-    os.chdir(date)
-    # Get file names in this dir, ignoring notes
-    filenames = [s for s in os.listdir() if s != 'note']
-    
-    # Prepare storage variables
-    spikes = {}
-    waveforms = {}
-    for m in muscles:
-        spikes[m] = []
-        spikes[m + '_sorttype'] = []
-        waveforms[m] = []
-    # Loop over muscles
-    for m in muscles:
-        # Find files for this muscle
-        mfiles = [s for s in filenames
-                  if m in s
-                  if 'sort' in s]
-        # If no files for this muscle, yell and continue
-        if len(mfiles) == 0:
-            print(m + ' has no sorted files!')
-            continue
-        # Loop over all sorted files 
-        # (usually 1, may be more if _up or _down variant)
-        for sortfile in mfiles:
-            # Determine type of sort (up, down, or regular)
-            if 'up' in sortfile:
-                thistype = 'up'
-            elif 'down' in sortfile:
-                thistype = 'down'
-            else:
-                thistype = 'reg'
-            # Read in file
-            mat = scipy.io.loadmat(sortfile)
-            # Loop over "channels" (actually just trials) and grab data
-            for ch in [s for s in list(mat) if '__' not in s]:
-                # grab channel/trial number 
-                chnumber = int(ch[-2:])
-                # grab spike times and put together with trial number
-                temparray = np.column_stack((mat[ch][:,1],
-                                             chnumber*np.ones(len(mat[ch][:,1]))))
-                # Remove any obvious stim artifacts (high amplitude!)
-                rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
-                temparray = np.delete(temparray, (rminds), axis=0)
-                mat[ch] = np.delete(mat[ch], (rminds), axis=0)
-                
-                # save spike times
-                spikes[m].append(temparray)
-                # Save sort type
-                spikes[m + '_sorttype'].append(thistype)
-                # save waveforms
-                waveforms[m].append(mat[ch][:,2:])
-                
-        # Do a last vstack of all the nparrays in a list
-        spikes[m] = np.vstack(spikes[m])
-        waveforms[m] = np.vstack(waveforms[m])
-    return spikes, waveforms
-                
 
 # Load spike times for this date
 spikes, waveforms = readSpikeSort(date)
@@ -288,22 +229,23 @@ for m in channelsEMG:
             
         closespikes[m].extend(closest[closest != -1].tolist())
         
+        #--- Save to large vector of spike inds in dataframe
         
-    # As a check: Plot all trials meeting test condiiton for being stim spikes
+        
+    # # As a check: Plot all trials meeting test condiiton for being stim spikes
     plt.figure()
     susrows[m].extend(np.where(np.min(waveforms[m], axis=1) < -0.4)[0])
     for j in susrows[m]:
         plt.plot(waveforms[m][j,:])
     plt.title(m)
     
-    # Other check: Plot waveforms meeting closeness condition for being stim
+    # # Other check: Plot waveforms meeting closeness condition for being stim
     # Remove empties
     closespikes[m] = [x for x in closespikes[m] if x != []]
     plt.figure()
     for j in closespikes[m]:
         plt.plot(waveforms[m][j,:])
     plt.title(m)
-    
     
     
 
@@ -313,15 +255,19 @@ for m in channelsEMG:
 
 #%% Test: plot random snippet with spikes marked
 
-da['stim'] = 0
-for i in 
-da['stim'][]
+m = 'LDVM'
+tr = 10
 
-pdata = da.loc[(da['trial']==10) & (da['Time']>-10) & (da['Time']<-8), ]
+tmin = -10
+tmax = -9.5
+
+pdata = da.loc[(da['trial']==tr) & (da['Time']>tmin) & (da['Time']<tmax), ]
+spdata = spikes[m][spikes[m][:,1]==tr, 0]
+spdata = spdata[(spdata>tmin) & (spdata<tmax)]
 
 plt.figure()
-plt.plot(pdata['Time'], pdata['LDVM'])
-
+plt.plot(pdata['Time'], pdata[m])
+plt.vlines(spdata, ymin=-0.1, ymax=0.2)
 
 
 
@@ -378,9 +324,9 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 
 #%% A quickplot cell
 
-quickPlot('20210803_1', '014',
+quickPlot('20210803_1', '033',
           tstart=0, tend=20,
-          plotnames=['stim','comparator','LDLM','RDLM','mx'])
+          plotnames=['stim'])
 
 
 #%% Mean traces over time, stimulus marked 

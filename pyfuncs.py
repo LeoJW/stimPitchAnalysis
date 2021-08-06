@@ -76,7 +76,8 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
 
 
 # Grab spike-sorted data, consisting of spike times and waveforms
-def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
+def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
+                  stimAmplitudeThresh=4):
     # Jump out to spikesort dir
     startdir = os.path.dirname(os.path.realpath(__file__))
     os.chdir(os.path.join(startdir, os.pardir, 'spikesort'))
@@ -122,9 +123,9 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
                 temparray = np.column_stack((mat[ch][:,1],
                                              chnumber*np.ones(len(mat[ch][:,1]))))
                 # Remove any obvious stim artifacts (high amplitude!)
-                rminds = np.where(np.any(mat[ch][:,2:] > 9, axis=1))[0]
-                np.delete(temparray, (rminds), axis=0)
-                np.delete(mat[ch], (rminds), axis=0)
+                rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
+                temparray = np.delete(temparray, (rminds), axis=0)
+                mat[ch] = np.delete(mat[ch], (rminds), axis=0)
                 
                 # save spike times
                 spikes[m].append(temparray)
@@ -137,6 +138,7 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM']):
         spikes[m] = np.vstack(spikes[m])
         waveforms[m] = np.vstack(waveforms[m])
     return spikes, waveforms
+    # TODO: Make stimAmplitudeThresh intelligent, adjusted based on normal spike amplitudes
     
 
 # grab which trials for this moth are good and have delay
