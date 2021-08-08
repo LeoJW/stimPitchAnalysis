@@ -46,7 +46,7 @@ fzheight = 0.05
 
 # Thresholds
 stimthresh = 3 # threshold to count stim channel as "on"
-wblengththresh = 0.5 # wingbeats longer than this time in s are deemed pauses in flapping and removed
+wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in flapping and removed
 
 
 #- Load data
@@ -109,18 +109,6 @@ for i in goodTrials:
     dtemp['reltime'] = dtemp['Time']
     dtemp['reltime'] = dtemp.groupby(['wb'], group_keys=False).apply(
         lambda g: g['Time'] - g['Time'].iloc[0])
-    
-    # Remove wingbeats longer than a certain threshold
-    # dtemp = dtemp.groupby('wb').filter(lambda g: len(g['reltime']) < wblengththresh)
-    
-    # df = df.groupby(['mac']).filter(lambda x: x['latency'].count() > 1)
-    # df[df.groupby('mac')['latency'].transform('count').gt(1)]
-    
-    ''' 
-    TODO:
-    reltime is super fucked up. 
-    Need to remove wingbeats based on reltime in method faster than continental drift
-    '''
         
     # Get stim indices
     si = np.where(np.logical_and(dtemp['stim']>3,
@@ -193,7 +181,7 @@ for i in goodTrials:
         
     # Remove wingbeats longer than a certain threshold
     print(len(dtemp))
-    dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(5000)]
+    dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(int(fsamp*wblengththresh))]
     print(len(dtemp))
     
     # Add to full dataframe
@@ -285,13 +273,17 @@ for m in channelsEMG:
 
 #%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
 
-fig, ax = plt.subplots(len(channelsEMG), 2, sharex=True)
+fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
 for i,m in enumerate(channelsEMG):
-    ax[i,0].hist(da.loc[da[m+'_st'], 'phase'], bins=100)
-    ax[i,1].hist(da.loc[da[m+'_st'], 'reltime'], bins=100)
+    ax[i].hist(da.loc[da[m+'_st'], 'phase'], bins=100)
 # Labels and aesthetics
-ax[len(channelsEMG)-1,0].set_xlabel('Spike Phase')
-ax[len(channelsEMG)-1,1].set_xlabel('Spike Time')
+ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
+
+
+fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
+for i,m in enumerate(channelsEMG):
+    ax[i].hist(da.loc[da[m+'_st'], 'reltime'], bins=100)
+ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
 
 
