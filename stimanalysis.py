@@ -46,6 +46,7 @@ fzheight = 0.05
 
 # Thresholds
 stimthresh = 3 # threshold to count stim channel as "on"
+wblengththresh = 0.5 # wingbeats longer than this time in s are deemed pauses in flapping and removed
 
 
 #- Load data
@@ -99,11 +100,27 @@ for i in goodTrials:
     # Make trial column
     dtemp['trial'] = i
     
-    # Create phase vector by rescaling time based on wingbeats
+    # Create phase column by rescaling time based on wingbeats
     dtemp['phase'] = np.nan
     for j in np.arange(len(wb)-1):
         ind = np.arange(wb[j], wb[j+1])
         dtemp.loc[ind, 'phase'] = np.linspace(0, 1, len(ind))
+    # Create relative time column that starts at 0 every wingbeat
+    dtemp['reltime'] = dtemp['Time']
+    dtemp['reltime'] = dtemp.groupby(['wb'], group_keys=False).apply(
+        lambda g: g['Time'] - g['Time'].iloc[0])
+    
+    # Remove wingbeats longer than a certain threshold
+    # dtemp = dtemp.groupby('wb').filter(lambda g: len(g['reltime']) < wblengththresh)
+    
+    # df = df.groupby(['mac']).filter(lambda x: x['latency'].count() > 1)
+    # df[df.groupby('mac')['latency'].transform('count').gt(1)]
+    
+    ''' 
+    TODO:
+    reltime is super fucked up. 
+    Need to remove wingbeats based on reltime in method faster than continental drift
+    '''
         
     # Get stim indices
     si = np.where(np.logical_and(dtemp['stim']>3,
@@ -123,9 +140,6 @@ for i in goodTrials:
         # get which wingbeat this stim is on
         stimwb = dtemp.loc[s, 'wb']
         
-        # Save the stim delay and phase
-        stimdelay = (s - np.argmax(dtemp['wb']==stimwb))/fsamp*1000 #in ms
-        stimphase = stimdelay*fsamp/1000/len(dtemp.loc[dtemp['wb']==stimwb])
         
         #--- Pre-stim wingbeats
         # Grab indices of this pre-stim period
@@ -148,8 +162,10 @@ for i in goodTrials:
         dtemp.loc[inds, 'wbstate'] = 'stim'
         dtemp.loc[inds, 'wbrel'] = 0
         dtemp.loc[inds, 'pulse'] = pulsecount
+        # Calculate stimulus delay and phase
+        stimdelay = (s - np.argmax(inds))/fsamp*1000 #in ms
         dtemp.loc[inds, 'stimdelay'] = stimdelay
-        dtemp.loc[inds, 'stimphase'] = stimphase
+        dtemp.loc[inds, 'stimphase'] = stimdelay*fsamp/1000/len(np.where(inds)[0])
         
         #--- Post-stim wingbeats
         inds = np.where(
@@ -174,6 +190,11 @@ for i in goodTrials:
     # Clean EMG channels to NAN during stimulation period (to remove artifact)
     for name in channelsEMG:
         dtemp.loc[dtemp['stim']>stimthresh, name] = np.nan
+        
+    # Remove wingbeats longer than a certain threshold
+    print(len(dtemp))
+    dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(5000)]
+    print(len(dtemp))
     
     # Add to full dataframe
     if i==goodTrials[0]:
@@ -184,7 +205,7 @@ for i in goodTrials:
         
 
 da = df.copy()
-# Version without regular wingbeats
+# Version without regular wingbeats (eventually move down post-spikesort load)
 df = df[df['wbstate'].isin(['pre','stim','post'])]
         
 
@@ -208,7 +229,6 @@ for m in channelsEMG:
     susrows[m] = []
     # New columns in dataframes for spike times (st's)
     da[m+'_st'] = False
-    df[m+'_st'] = False
 
 # Loop over muscles
 for m in channelsEMG:
@@ -220,6 +240,12 @@ for m in channelsEMG:
         # Get inds that are in this trial for spikes and main dataframes
         inds = spikes[m][:,1]==i
         ida = da['trial']==i
+        firstrow = np.argmax(ida)
+        
+        # Turn spike times into indices
+        spikeinds = np.rint(spikes[m][inds,0]*fsamp).astype(int)
+        # Save on boolean vector
+        spikeBoolVec[spikeinds + firstrow] = True
         
         #--- Flip spike times to work on the -len : 0 time scale
         # Get time length of this trial
@@ -236,49 +262,38 @@ for m in channelsEMG:
             # If none actually met condition, change value to reflect that
             if spikeDistance[closestSpike] > stimwindow:
                 closest[j] = -1
-            # Otherwise save spike that was closest
             else:
+                # Otherwise save spike that was closest
                 closest[j] = np.where(inds)[0][closestSpike]                
+                # Remove from boolean vector
+                spikeBoolVec[spikeinds[closestSpike] + firstrow] = False
         # Save closest spikes
         closespikes[m].extend(closest[closest != -1].tolist())
         
-        
-    # As a check: Plot waveforms meeting closeness condition for being stim
-    closespikes[m] = [x for x in closespikes[m] if x != []] # Remove empties
-    plt.figure()
-    for j in closespikes[m]:
-        plt.plot(waveforms[m][j,:])
-    plt.title(m)
+    # Actually remove spikes that are too close to stim
+    spikes[m] = np.delete(spikes[m], (closespikes[m]), axis=0)
+    waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0)
     
+    # Update dataframe column with spikeBoolVec
+    da[m+'_st'] = spikeBoolVec
     
 
 
 # Test: plot distribution of spikes around stimulus
 
-#%%
-
-tic = systime.perf_counter()
-newind = np.zeros(len(ida), dtype=bool)
-newind[stiminds[i]+np.argmax(ida)] = True
-da.loc[(ida) & (newind), m+'_st']
-toc = systime.perf_counter()
-print(toc-tic)
-
-
-tic = systime.perf_counter()
-da.loc[ida, m+'_st'][stiminds[i]]
-toc = systime.perf_counter()
-print(toc-tic)
-
-tic = systime.perf_counter()
-da[m+'_st'][ida][stiminds[i]]
-toc = systime.perf_counter()
-print(toc-tic)
-
-
 
 
 #%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
+
+fig, ax = plt.subplots(len(channelsEMG), 2, sharex=True)
+for i,m in enumerate(channelsEMG):
+    ax[i,0].hist(da.loc[da[m+'_st'], 'phase'], bins=100)
+    ax[i,1].hist(da.loc[da[m+'_st'], 'reltime'], bins=100)
+# Labels and aesthetics
+ax[len(channelsEMG)-1,0].set_xlabel('Spike Phase')
+ax[len(channelsEMG)-1,1].set_xlabel('Spike Time')
+
+
 
 
 #%% Get & plot relative spike times before, during, and after stimulus
@@ -374,6 +389,7 @@ TODO
 - Optimize readin/processing; way too slow right now
 - Move to non-pandas version? Make pandas dataframe only after processing?
 - Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
+- Handle spiek sorting _up and _down files without repeating spikes
 - Create mean before-stim-after plots
 
 - Mean vs stim phase: Change to also do DIFF from previous wingbeat
