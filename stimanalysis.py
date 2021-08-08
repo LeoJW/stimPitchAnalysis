@@ -24,7 +24,7 @@ import time as systime
 
 
 #%% Start with single individual
-date = '20210727'
+date = '20210721'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -193,6 +193,10 @@ for i in goodTrials:
 da = df.copy()
 # Version without regular wingbeats (eventually move down post-spikesort load)
 df = df[df['wbstate'].isin(['pre','stim','post'])]
+
+# Remove DLM stimulation trials from 20210801
+if date == '20210801':
+    df = df.loc[~df['trial'].isin([5,6,7,8]), ]
         
 
 #%% Pull in spike times from spike sorting
@@ -283,7 +287,23 @@ for i,m in enumerate(channelsEMG):
 ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
 
+#%% Plot distributions pre, stim, post
 
+
+fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
+
+statenames = ['pre','stim','post']
+cols = ['green','red','blue']
+
+for i,m in enumerate(channelsEMG):
+    for j,s in enumerate(statenames):
+        ax[i].hist(da.loc[da[m+'_st'] & (da['wbstate']==s), 'phase'],
+                   density=True,
+                   bins=100,
+                   color=cols[j],
+                   alpha=0.5)
+# Labels and aesthetics
+# ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
 
 #%% Get & plot relative spike times before, during, and after stimulus
 
@@ -336,7 +356,7 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 
 
 
-#%% Difference between traces 1wb pre, during, post stim
+#%% Difference between traces pre, during, post stim
 
 
 # set up figure
@@ -344,24 +364,23 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 plt.figure()
 viridis = cmx.get_cmap('viridis')
 
-mincol = np.min(da['phase'])
-maxcol = np.max(da['phase'])
+dt = df.loc[df['pulse']!=259, ]
+mincol = np.min(dt['stimphase'])
+maxcol = np.max(dt['stimphase'])
 
-test = []
 # Loop over pulses
-for i in np.unique(df['pulse']):
+for i in np.unique(dt['pulse']):
     # Grab this pulse, take wb means
-    data = df.loc[df['pulse']==i,].groupby(['wb']).agg(aggdict)
+    data = dt.loc[dt['pulse']==i,].groupby(['wb']).agg(aggdict)
     data['wb'] = data['wb'] - data['wb'].iloc[0]
     # Color by phase
-    colphase = (data['stimphase'].iloc[wbBefore]-mincol)/(maxcol-mincol)
+    colphase = (data.loc[data['wbstate']=='stim', 'stimphase'] - mincol)/(maxcol - mincol)
     # Plot pre-stim-post sequence for this pulse
     # for j,m in enumerate(channelsFT):
-    plt.plot(data['wb'], data['mx'] - data['mx'].iloc[wbBefore],
+    plt.plot(data['wb'], data['mx'] - data.loc[data['wbstate']=='stim', 'mx'],
                '-', marker='.',
                alpha=0.4,
                color=viridis(colphase))
-    test.append(colphase)
     
 
 #%% A quickplot cell
