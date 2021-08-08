@@ -24,7 +24,7 @@ import time as systime
 
 
 #%% Start with single individual
-date = '20210803_1'
+date = '20210727'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -180,9 +180,7 @@ for i in goodTrials:
         dtemp.loc[dtemp['stim']>stimthresh, name] = np.nan
         
     # Remove wingbeats longer than a certain threshold
-    print(len(dtemp))
-    dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(int(fsamp*wblengththresh))]
-    print(len(dtemp))
+    # dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(int(fsamp*wblengththresh))]
     
     # Add to full dataframe
     if i==goodTrials[0]:
@@ -205,7 +203,6 @@ stimwindow = 0.001 # s, spikes closer than this time to stim are removed
 
 # Load spike times for this date
 spikes, waveforms = readSpikeSort(date)
-
 
 
 # Preparation, preallocation
@@ -290,9 +287,16 @@ ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
 #%% Get & plot relative spike times before, during, and after stimulus
 
+
+
 #%% Plot how mean torques/forces vary with relative spike times DUE TO STIMULUS
 
+
+
+
 #%% show variance in induced AP by superimposing 
+
+
 
 
 #%% Wingbeat mean torques vs. stimulus time/phase 
@@ -335,6 +339,30 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 #%% Difference between traces 1wb pre, during, post stim
 
 
+# set up figure
+# fig, ax = plt.subplots(len(channelsFT), 1, sharex='all')
+plt.figure()
+viridis = cmx.get_cmap('viridis')
+
+mincol = np.min(da['phase'])
+maxcol = np.max(da['phase'])
+
+test = []
+# Loop over pulses
+for i in np.unique(df['pulse']):
+    # Grab this pulse, take wb means
+    data = df.loc[df['pulse']==i,].groupby(['wb']).agg(aggdict)
+    data['wb'] = data['wb'] - data['wb'].iloc[0]
+    # Color by phase
+    colphase = (data['stimphase'].iloc[wbBefore]-mincol)/(maxcol-mincol)
+    # Plot pre-stim-post sequence for this pulse
+    # for j,m in enumerate(channelsFT):
+    plt.plot(data['wb'], data['mx'] - data['mx'].iloc[wbBefore],
+               '-', marker='.',
+               alpha=0.4,
+               color=viridis(colphase))
+    test.append(colphase)
+    
 
 #%% A quickplot cell
 

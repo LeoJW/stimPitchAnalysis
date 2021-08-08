@@ -102,6 +102,9 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
         # If no files for this muscle, yell and continue
         if len(mfiles) == 0:
             print(m + ' has no sorted files!')
+            # Save placeholders for spikes and waveforms
+            spikes[m] = np.array([[-1000,-1000]])
+            waveforms[m] = np.zeros((1,32))
             continue
         # Loop over all sorted files 
         # (usually 1, may be more if _up or _down variant)
