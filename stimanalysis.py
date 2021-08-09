@@ -24,7 +24,7 @@ import time as systime
 
 
 #%% Start with single individual
-date = '20210714'
+date = '20210730'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -176,7 +176,6 @@ for i in goodTrials:
         pulsecount += 1
         
         
-    
     # Clean EMG channels to NAN during stimulation period (to remove artifact)
     for name in channelsEMG:
         dtemp.loc[dtemp['stim']>stimthresh, name] = np.nan
@@ -196,14 +195,27 @@ da = df.copy()
         
 
 
-# TODO: Look at difference in spike times, assign those above threshold as different pulses
+# TODO: Look at difference in stim times, assign those above threshold as different pulses
 
 
 #%% Pull in spike times from spike sorting
 
+# Controls
+plotRemoved = False
+
 # Constants
 stimwindow = 0.002 # s, spikes closer than this time to stim are removed
+skiptrials = {
+    '20210730' : [22],
+    '20210803_1' : [19,20]}
+'''
+QUICK FIX FOR 20210730: 22 is not in EMG, but in FT
+Make spikes from trial 22 empty, and shift the current 22-27 to 23-28
 
+LONG FIX: Redo spike sorting, alter offlineSortConvert to catch this
+
+Note that same issue should be present in 20210803_1
+'''
 
 # Load spike times for this date
 spikes, waveforms = readSpikeSort(date)
@@ -223,6 +235,13 @@ for m in channelsEMG:
 for m in channelsEMG:
     # Make boolean array that'll be true wherever spikes are
     spikeBoolVec = np.zeros(len(da), dtype=bool)
+    
+    # Fix skiptrials issues if present
+    if date in list(skiptrials.keys()):
+        # Loop over each skip
+        for i in skiptrials[date]:
+            # Bump all trials up one to skip this trial
+            spikes[m][spikes[m][:,1]>=i,1] += 1
     
     # Loop over trials that are also in goodtrials
     for i in list(set(np.unique(spikes[m][:,1])).intersection(goodTrials)):
@@ -260,10 +279,11 @@ for m in channelsEMG:
         closespikes[m].extend(closest[closest != -1].tolist())
         
     # Plot the spikes that are too close
-    plt.figure()
-    for i in closespikes[m]:
-        plt.plot(waveforms[m][i,:])
-    plt.title(m)
+    if plotRemoved:
+        plt.figure()
+        for i in closespikes[m]:
+            plt.plot(waveforms[m][i,:])
+        plt.title(m)
     
     # Actually remove spikes that are too close to stim
     spikes[m] = np.delete(spikes[m], (closespikes[m]), axis=0)
@@ -273,7 +293,6 @@ for m in channelsEMG:
     da[m+'_st'] = spikeBoolVec
     
 
-
 # Version without regular wingbeats 
 df = da[da['wbstate'].isin(['pre','stim','post'])]
 # Remove DLM stimulation trials from 20210801
@@ -281,7 +300,7 @@ if date == '20210801':
     df = df.loc[~df['trial'].isin([5,6,7,8]), ]
 
 
-#%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
+#%% Plot distribution of spike phase for each muscle 
 
 fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
 for i,m in enumerate(channelsEMG):
@@ -296,29 +315,15 @@ for i,m in enumerate(channelsEMG):
 ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
 
-#%% Plot spike time distributions pre, stim, post
+# TODO: for first spike in wingbeat?
 
-
-fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-
-statenames = ['pre','stim','post']
-cols = ['green','red','blue']
-
-for i,m in enumerate(channelsEMG):
-    for j,s in enumerate(statenames):
-        ax[i].hist(da.loc[da[m+'_st'] & (da['wbstate']==s), 'phase'],
-                   density=True,
-                   bins=100,
-                   color=cols[j],
-                   alpha=0.5)
-# Labels and aesthetics
-# ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
 
 
 #%% Spike phase vs. stimphase
 
-
-fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True,
+# Spike phase stim only
+fig, ax = plt.subplots(len(channelsEMG), 1,
+                       sharex=True, sharey=True,
                        figsize=(6,9))
 
 for i,m in enumerate(channelsEMG):
@@ -326,15 +331,44 @@ for i,m in enumerate(channelsEMG):
                 da[m+'_st'], ]
     ax[i].plot(dt['stimphase'], dt['phase'], '.')
     ax[i].set_ylabel(m)
-    
 # save
-plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
-            dpi=500)
+# plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
+#             dpi=500)
 
+#%%
+# Get length of wingbeats in samples
+wblen = da.groupby(['wb','trial'])['wb'].transform('count')
+
+#--- Spike phase pre-, stim, post-
+fig, ax = plt.subplots(len(channelsEMG), 3,
+                       sharex=True, sharey=True,
+                       figsize=(6,9))
+# make plot
+states = ['pre','stim','post']
+for i,m in enumerate(channelsEMG):
+    for j,s in enumerate(states):
+        dt = da.loc[(da['wbstate']==s) & 
+                    da[m+'_st'] &
+                    (da['trial']==23), ]
+        ax[i,j].plot(dt['stimphase'], dt['phase'], '.')
+# labels, aesthetics
+for i,m in enumerate(channelsEMG):
+    ax[i,0].set_ylabel(m)
+for j,s in enumerate(states):
+    ax[len(channelsEMG)-1,j].set_xlabel(s)
+ax[0,0].set_xlim((0,1))
+ax[0,0].set_ylim((0,1))
+# save
+# plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
+#             dpi=500)
+
+
+#%% DLM-DVM relative timing against mechanical output variables
+
+# Determine whether L and/or R sides have spike sorted data on both muscles
 
 
 #%% Plot how mean torques/forces vary with relative spike times DUE TO STIMULUS
-
 
 
 
@@ -384,13 +418,14 @@ ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
 
 
 # set up figure
-# fig, ax = plt.subplots(len(channelsFT), 1, sharex='all')
 plt.figure()
 viridis = cmx.get_cmap('viridis')
 
 dt = df.loc[df['pulse']!=259, ]
 mincol = np.min(dt['stimphase'])
 maxcol = np.max(dt['stimphase'])
+
+plotvar = 'fz'
 
 # Loop over pulses
 for i in np.unique(dt['pulse']):
@@ -401,7 +436,7 @@ for i in np.unique(dt['pulse']):
     colphase = (data['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
     # Plot pre-stim-post sequence for this pulse
     # for j,m in enumerate(channelsFT):
-    plt.plot(data['wb'], data['mx'] - data['mx'].iloc[3],
+    plt.plot(data['wb'], data['fz'] - data['fz'].iloc[wbBefore],
                '-', marker='.',
                alpha=0.4,
                color=viridis(colphase))
@@ -409,17 +444,18 @@ for i in np.unique(dt['pulse']):
 
 #%% A quickplot cell
 
-quickPlot('20210714', '009',
-          tstart=0, tend=20,
-          plotnames=['stim','fz'])
+# quickPlot('20210730', '023',
+#           tstart=0, tend=20,
+#           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx'])
 
-#%% A quick look to diagnose wingbeat finding issues
 
+
+#%%
 wingbeatColor = '#C2C2C2'
 
 plt.figure()
-dd = da.loc[(da['trial']==9) &
-            (da['Time'] > -4) &
+dd = da.loc[(da['trial']==23) &
+            (da['Time'] > -19) &
             (da['Time'] < -2), ]
 
 # Make your own wingbeats again
@@ -440,11 +476,16 @@ for i in np.unique(dd['wb']):
                     lw=0, color=wingbeatColor)
         
 # Plot lines
-for i,m in enumerate(channelsEMG):
+plotchans = ['RDVM','LDLM']
+for i,m in enumerate(plotchans):
     plt.plot(dd['Time'], dd[m] + i)
     
-plt.plot(dd['Time'], 4*dd['fz'] + 4)
-    
+plt.plot(dd['Time'], 4*dd['fz'] + 2)
+plt.plot(dd['Time'], dd['stim']-1)
+
+ddd = dd.loc[dd['RDVM_st'], ]
+plt.vlines(ddd['Time'], -1, 3, color='k')
+
 
 #%% Mean traces over time, stimulus marked 
 trial = 11
