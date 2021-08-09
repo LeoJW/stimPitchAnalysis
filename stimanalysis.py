@@ -41,8 +41,8 @@ lpfCutoff = 500
 
 # Wingbeat finding
 zforceCutoff = 40
-wbdistance = 200
-fzheight = 0.05
+wbdistance = 300 # samples
+fzrelheight = 0.3 # count peaks above this amount of min-max height
 
 # Thresholds
 stimthresh = 3 # threshold to count stim channel as "on"
@@ -61,6 +61,8 @@ goodTrials = whichTrials(date)
 # Create variables for loop
 pulsecount = 1
 stiminds = [[] for x in range(goodTrials[-1]+1)] 
+fpeak = [[] for x in range(goodTrials[-1]+1)] 
+plt.close('all')
 ''' 
 ^Note the +1: For trials I'm sticking to a 1-indexing convention.
 This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
@@ -88,14 +90,28 @@ for i in goodTrials:
     # Put everything together into a dataframe
     dtemp = pd.DataFrame({**emg, **ftd})
     
+    # Determine fz peak height for this trial
+    minfz, maxfz = np.mean(dtemp['fz'][0:1000]), np.max(dtemp['fz'])
+    fzpeakheight = minfz + fzrelheight*(maxfz - minfz)
+    fpeak[i] = fzpeakheight
     # Grab wingbeats from filtered z force
     wb = find_peaks(butterfilt(dtemp['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'),
                     distance=wbdistance,
-                    height=fzheight)[0]
+                    height=fzpeakheight)[0]
+    
     # Make long-form wingbeat column in dataframe (useful for stuff)
     dtemp['wb'] = 0
     dtemp.loc[wb, 'wb'] = 1
     dtemp['wb'] = np.cumsum(dtemp['wb'])
+    
+    # Test plot for diagnosing issues
+    plt.figure()
+    for j in np.unique(dtemp['wb']):
+        if j % 2 == 0:
+            wbtime = dtemp.loc[dtemp['wb']==j, 'Time'].to_numpy()
+            plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
+    plt.plot(dtemp['Time'], butterfilt(dtemp['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'))            
+    plt.title(i)
     
     # Make trial column
     dtemp['trial'] = i
@@ -391,10 +407,11 @@ for i in np.unique(dt['pulse']):
 
 #%% A quickplot cell
 
-# quickPlot('20210714', '009',
-#           tstart=15, tend=17,
-#           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','fz'])
+quickPlot('20210714', '009',
+          tstart=0, tend=20,
+          plotnames=['stim','fz'])
 
+#%% A quick look to diagnose wingbeat finding issues
 
 wingbeatColor = '#C2C2C2'
 
@@ -402,15 +419,24 @@ plt.figure()
 dd = da.loc[(da['trial']==9) &
             (da['Time'] > -4) &
             (da['Time'] < -2), ]
+
+# Make your own wingbeats again
+# Grab wingbeats from filtered z force
+wb = find_peaks(butterfilt(dd['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'),
+                distance=wbdistance,
+                height=fzheight)[0]
 # Plot wingbeats
 for i in np.unique(dd['wb']):
     if i % 2 == 0:
         wbtime = dd.loc[dd['wb']==i, 'Time'].to_numpy()
-        plt.axvspan(wbtime[0], wbtime[-1], lw=0)
+        plt.axvspan(wbtime[0], wbtime[-1],
+                    lw=0, color=wingbeatColor)
         
 # Plot lines
 for i,m in enumerate(channelsEMG):
-    plt.plot(dd['Time'], dd[m] + i, color=dd['wb'])
+    plt.plot(dd['Time'], dd[m] + i)
+    
+plt.plot(dd['Time'], 4*dd['fz'] + 4)
     
 
 #%% Mean traces over time, stimulus marked 
