@@ -40,9 +40,10 @@ hpfCutoff = 70
 lpfCutoff = 500
 
 # Wingbeat finding
-zforceCutoff = 40
+zforceCutoffLPF = 40
+zforceCutoffHPF = 10
 wbdistance = 300 # samples
-fzrelheight = 0.3 # count peaks above this amount of min-max height
+fzrelheight = 0.25 # count peaks above this amount of min-max height
 
 # Thresholds
 stimthresh = 3 # threshold to count stim channel as "on"
@@ -61,13 +62,12 @@ goodTrials = whichTrials(date)
 # Create variables for loop
 pulsecount = 1
 stiminds = [[] for x in range(goodTrials[-1]+1)] 
-fpeak = [[] for x in range(goodTrials[-1]+1)] 
-plt.close('all')
 ''' 
 ^Note the +1: For trials I'm sticking to a 1-indexing convention.
 This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
 given the way the trials were originally numbered!
 '''
+
 
 # Loop over all, read in data
 for i in goodTrials:
@@ -90,12 +90,14 @@ for i in goodTrials:
     # Put everything together into a dataframe
     dtemp = pd.DataFrame({**emg, **ftd})
     
+    # Filter z force (manually apply twice for bandpass, builtin bandpass crashes)
+    fzfilt = butterfilt(dtemp['fz'], zforceCutoffLPF, fsamp, order=4, bandtype='lowpass')
+    fzfilt = butterfilt(fzfilt, zforceCutoffHPF, fsamp, order=4, bandtype='highpass')
     # Determine fz peak height for this trial
-    minfz, maxfz = np.mean(dtemp['fz'][0:1000]), np.max(dtemp['fz'])
-    fzpeakheight = minfz + fzrelheight*(maxfz - minfz)
-    fpeak[i] = fzpeakheight
+    maxfz = np.max(fzfilt)
+    fzpeakheight = fzrelheight*maxfz
     # Grab wingbeats from filtered z force
-    wb = find_peaks(butterfilt(dtemp['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'),
+    wb = find_peaks(fzfilt,
                     distance=wbdistance,
                     height=fzpeakheight)[0]
     
@@ -110,7 +112,7 @@ for i in goodTrials:
         if j % 2 == 0:
             wbtime = dtemp.loc[dtemp['wb']==j, 'Time'].to_numpy()
             plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
-    plt.plot(dtemp['Time'], butterfilt(dtemp['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'))            
+    plt.plot(dtemp['Time'], fzfilt)            
     plt.title(i)
     
     # Make trial column
