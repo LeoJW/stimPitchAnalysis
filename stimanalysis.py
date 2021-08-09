@@ -106,14 +106,14 @@ for i in goodTrials:
     dtemp.loc[wb, 'wb'] = 1
     dtemp['wb'] = np.cumsum(dtemp['wb'])
     
-    # Test plot for diagnosing issues
-    plt.figure()
-    for j in np.unique(dtemp['wb']):
-        if j % 2 == 0:
-            wbtime = dtemp.loc[dtemp['wb']==j, 'Time'].to_numpy()
-            plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
-    plt.plot(dtemp['Time'], fzfilt)            
-    plt.title(i)
+    # # Test plot for diagnosing issues
+    # plt.figure()
+    # for j in np.unique(dtemp['wb']):
+    #     if j % 2 == 0:
+    #         wbtime = dtemp.loc[dtemp['wb']==j, 'Time'].to_numpy()
+    #         plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
+    # plt.plot(dtemp['Time'], fzfilt)            
+    # plt.title(i)
     
     # Make trial column
     dtemp['trial'] = i
@@ -423,10 +423,15 @@ dd = da.loc[(da['trial']==9) &
             (da['Time'] < -2), ]
 
 # Make your own wingbeats again
+fzfilt = butterfilt(dd['fz'], zforceCutoffLPF, fsamp, order=4, bandtype='lowpass')
+fzfilt = butterfilt(fzfilt, zforceCutoffHPF, fsamp, order=4, bandtype='highpass')
+# Determine fz peak height for this trial
+maxfz = np.max(fzfilt)
+fzpeakheight = fzrelheight*maxfz
 # Grab wingbeats from filtered z force
-wb = find_peaks(butterfilt(dd['fz'], zforceCutoff, fsamp, order=4, bandtype='lowpass'),
+wb = find_peaks(fzfilt,
                 distance=wbdistance,
-                height=fzheight)[0]
+                height=fzpeakheight)[0]
 # Plot wingbeats
 for i in np.unique(dd['wb']):
     if i % 2 == 0:
