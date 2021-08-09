@@ -184,9 +184,17 @@ def whichTrials(date, purpose='good'):
             # Remove trials marked as error
             for i in table[4]:
                 trials = [x for x in trials if x!=i]
-                
         return trials
-    # TODO extend to return other types of trials (stim characterization) eventually
+    # If looking for characterization trials
+    if purpose=='char':
+        trials = []
+        # Loop over how many pairs of start-end there are
+        for i in np.arange(0, len(table[1]), 2, dtype=int):
+            # create list of trials
+            trials.extend(np.arange(table[1][i], table[1][i+1]+1))
+        return trials
+        
+        
     
     
     
