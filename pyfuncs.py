@@ -518,6 +518,27 @@ def binPlotDiff(df,
    
 
 
-# wbmeanplot: Plots selected variables      
+# wbmeanplot: Plots selected variables as wingbeat means over time
+def wbmeanplot(plotvars, data, trial):
+    # Make aggregate control dictionary
+    aggdict = {}
+    for i in list(data.select_dtypes(include=np.number)): # loop over all numeric columns
+        aggdict[i] = 'mean'
+    aggdict['wbstate'] = 'first'
+    # aggregate dataframe
+    dt = da.loc[data['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
+    
+    # Plot wb mean values for this trial
+    fig, ax = plt.subplots(len(plotvars), 1, sharex='all')
+    for i, varname in enumerate(plotvars):
+        ax[i].plot(dt['Time'], dt[varname], marker='.')
+    # Replot stimulus wingbeats as red
+    for i, varname in enumerate(plotvars):
+        ax[i].plot(dt.loc[dt['wbstate']=='stim', 'Time'],
+                   dt.loc[dt['wbstate']=='stim', varname],
+                   'r.')
+    # Label axes
+    for i, varname in enumerate(plotvars):
+        ax[i].set_ylabel(varname)
     
     
