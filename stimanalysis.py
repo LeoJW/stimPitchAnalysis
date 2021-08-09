@@ -22,13 +22,12 @@ from pyfuncs import *
 import time as systime
 
 
+#%%
+# Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-rundates = ['20210721']
+rundates = ['20210714']
 for date in rundates:
     plt.close('all')
-    
-    #%% Start with single individual
-    # date = '20210803_1'
     
     # Channel names to process
     channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -53,6 +52,9 @@ for date in rundates:
     stimthresh = 3 # threshold to count stim channel as "on"
     wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in flapping and removed
     
+    # Known things
+    states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
+    
     
     #- Load data
     # Read empty FT for bias
@@ -65,6 +67,7 @@ for date in rundates:
     
     # Create variables for loop
     pulsecount = 1
+    lastwb = 0
     stiminds = [[] for x in range(goodTrials[-1]+1)] 
     ''' 
     ^Note the +1: For trials I'm sticking to a 1-indexing convention.
@@ -108,7 +111,8 @@ for date in rundates:
         # Make long-form wingbeat column in dataframe (useful for stuff)
         dtemp['wb'] = 0
         dtemp.loc[wb, 'wb'] = 1
-        dtemp['wb'] = np.cumsum(dtemp['wb'])
+        dtemp['wb'] = np.cumsum(dtemp['wb']) + lastwb
+        lastwb = dtemp['wb'].iloc[-1]
         
         # # Test plot for diagnosing issues
         # plt.figure()
@@ -197,12 +201,20 @@ for date in rundates:
     
     da = df.copy()
             
-    
+    #--- Calculate useful quantities/vectors
+    wb = da['wb'].to_numpy()
+    # length of each wingbeat (useful)
+    wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
+    # First index of each wb
+    wbfirstinds = np.unique(da.wb.values, return_index=1)[1]
+
     
     # TODO: Look at difference in stim times, assign those above threshold as different pulses
     
     
     #%% Pull in spike times from spike sorting
+    print('Pulling and analyzing spike sorting.....')
+    tic = systime.perf_counter()
     
     # Controls
     plotRemoved = False
@@ -298,12 +310,81 @@ for date in rundates:
         
     
     # Version without regular wingbeats 
-    df = da[da['wbstate'].isin(['pre','stim','post'])]
+    df = da[da['wbstate'].isin(states)]
     # Remove DLM stimulation trials from 20210801
     if date == '20210801':
         df = df.loc[~df['trial'].isin([5,6,7,8]), ]
+        
+    print('    done in ' + str(systime.perf_counter()-tic))
+    
+    #%% Calculate DLM-DVM relative timing
+    print('Relative DLM-DVM timing')
+    tic = systime.perf_counter()
+    
+    # plot controls
+    cols = ['green','red','blue']
+    
+    # Known things
+    namesDLM = ['LDLM', 'RDLM']
+    namesDVM = ['LDVM', 'RDVM']
+    
+    # Setup, preallocation
+    uniquewb = np.unique(da['wb'])
+    wbstate = da['wbstate'].iloc[wbfirstinds]
+    firstDLM = np.zeros(2)
+    firstDVM = np.zeros(2)
+    dt = np.zeros((len(uniquewb),2)) # L,R
+    
+    # Determine which muscles have spike sorted data
+    hasSort = []
+    for m in channelsEMG:
+        hasSort.append(np.shape(spikes[m])[0] > 1)
+    bothOnSide = [hasSort[0] & hasSort[1], hasSort[2] & hasSort[3]]
+    # Loop over wingbeats
+    for i,w in enumerate(uniquewb):        
+        # Grab this wingbeat's data
+        # thiswb = da.loc[(da['wb']>=w) & (da['wb']<=w+1), ] # Includes next wingbeat for rollovers
+        thiswb = da.loc[np.logical_and(wb>=w, wb<=w+1), ]
+        # Loop over DLMs
+        for j in np.where(bothOnSide)[0]:
+            # Get first L&R DLM spike for each wingbeat
+            firstDLM[j] = np.argmax(thiswb[namesDLM[j]+'_st'])
+            # If there was no DLM spike, skip this wingbeat
+            if firstDLM[j] == 0:
+                dt[i,j] = np.nan
+                continue
+            # otherwise get where DVM spikes happen
+            DVMspikes = np.where(thiswb[namesDVM[j]+'_st'])[0]
+            # Continue if there WERE DVM spikes
+            if len(DVMspikes) != 0:
+                # first DVM spike occurring after that DLM spike
+                firstDVM[j] = DVMspikes[np.argmax(DVMspikes > firstDLM[j])]
+                # calculate deltas
+                dt[i,j] = firstDVM[j] - firstDLM[j]
+    
+    # Assign deltas to column in da
+    da['dtL'] = np.repeat(dt[:,0], wblen[wbfirstinds])
+    da['dtR'] = np.repeat(dt[:,1], wblen[wbfirstinds])
     
     
+    plt.figure()
+    # Loop over states and plot each
+    for i,s in enumerate(states):
+        instate = np.where(wbstate==s)[0]
+        plt.hist(dt[instate,0]/fsamp*1000, bins=100, color=cols[i], alpha=0.5)
+    
+    print('    done in ' + str(systime.perf_counter()-tic))
+    
+#%%
+
+
+tic = systime.perf_counter()
+wb = da['wb'].to_numpy()
+# bob = np.where(np.logical_or(wb==10, wb==11))[0]
+bob = np.where(np.logical_and(wb>=10, wb<=11))[0]
+bob = np.where(wb==10)[0]
+print(systime.perf_counter()-tic)
+
     #%% Plot distribution of spike phase for each muscle 
     
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
@@ -314,9 +395,10 @@ for date in rundates:
     
     
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-    wblen = 
     for i,m in enumerate(channelsEMG):
-        ax[i].hist(da.loc[da[m+'_st'], 'reltime'], bins=100)
+        ax[i].hist(da.loc[da[m+'_st'] & 
+                          (wblen<1000), 'reltime'], bins=100)
+    # Labels
     ax[len(channelsEMG)-1].set_xlabel('Spike Time')
     
     
@@ -349,7 +431,6 @@ for date in rundates:
                            figsize=(6,9),
                            gridspec_kw = {'wspace':0, 'hspace':0.1})
     # make plot
-    states = ['pre','stim','post']
     for i,m in enumerate(channelsEMG):
         for j,s in enumerate(states):
             dt = da.loc[(da['wbstate']==s) & 
@@ -366,10 +447,6 @@ for date in rundates:
     plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
                 dpi=500)
     
-    
-    #%% DLM-DVM relative timing against mechanical output variables
-    
-    # Determine whether L and/or R sides have spike sorted data on both muscles
     
     
     #%% Plot how mean torques/forces vary with relative spike times DUE TO STIMULUS
