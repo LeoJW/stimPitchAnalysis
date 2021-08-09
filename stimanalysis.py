@@ -332,12 +332,11 @@ for i,m in enumerate(channelsEMG):
     ax[i].plot(dt['stimphase'], dt['phase'], '.')
     ax[i].set_ylabel(m)
 # save
-# plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
-#             dpi=500)
+plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
+            dpi=500)
 
-#%%
 # Get length of wingbeats in samples
-wblen = da.groupby(['wb','trial'])['wb'].transform('count')
+# wblen = da.groupby(['wb','trial'])['wb'].transform('count')
 
 #--- Spike phase pre-, stim, post-
 fig, ax = plt.subplots(len(channelsEMG), 3,
@@ -348,8 +347,7 @@ states = ['pre','stim','post']
 for i,m in enumerate(channelsEMG):
     for j,s in enumerate(states):
         dt = da.loc[(da['wbstate']==s) & 
-                    da[m+'_st'] &
-                    (da['trial']==23), ]
+                    da[m+'_st'], ]
         ax[i,j].plot(dt['stimphase'], dt['phase'], '.')
 # labels, aesthetics
 for i,m in enumerate(channelsEMG):
@@ -359,8 +357,8 @@ for j,s in enumerate(states):
 ax[0,0].set_xlim((0,1))
 ax[0,0].set_ylim((0,1))
 # save
-# plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
-#             dpi=500)
+plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
+            dpi=500)
 
 
 #%% DLM-DVM relative timing against mechanical output variables
