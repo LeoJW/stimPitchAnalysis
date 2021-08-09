@@ -24,7 +24,7 @@ import time as systime
 
 
 #%% Start with single individual
-date = '20210721'
+date = '20210714'
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -117,9 +117,7 @@ for i in goodTrials:
 
     # Waste memory and create second phase column to count multiple wingbeats 
     # (0->1, 1->2, etc rather than 0->1, 0->1)
-    dtemp['multphase'] = dtemp['phase']
     dtemp['wbstate'] = 'regular'
-    dtemp['wbrel'] = dtemp['wb']
     dtemp['pulse'] = 0
     dtemp['stimdelay'] = 0
     dtemp['stimphase'] = 0
@@ -128,6 +126,15 @@ for i in goodTrials:
         # get which wingbeat this stim is on
         stimwb = dtemp.loc[s, 'wb']
         
+        #--- Stim wingbeat
+        # Grab indices
+        stinds = dtemp['wb']==stimwb
+        # Calculate stimulus delay and phase
+        stdelay = (s - np.argmax(stinds))/fsamp*1000 #in ms
+        stphase = stdelay*fsamp/1000/len(np.where(stinds)[0])
+        # Change columns for stim wingbeat
+        dtemp.loc[stinds, ['wbstate', 'pulse', 'stimdelay', 'stimphase']] = 'stim', pulsecount, stdelay, stphase
+
         
         #--- Pre-stim wingbeats
         # Grab indices of this pre-stim period
@@ -135,40 +142,17 @@ for i in goodTrials:
             np.logical_and(
                 np.logical_and((dtemp['wb']>=(stimwb-wbBefore)), (dtemp['wb']<stimwb)),
                 (dtemp['wbstate']!='stim')))[0]
-        # Label as pre-stim period
-        dtemp.loc[inds, 'wbstate'] = 'pre'
-        dtemp.loc[inds, 'pulse'] = pulsecount
-        # Change phase column to go from 0->x where x is number of "before" wingbeats
-        for ii in np.arange(wbBefore):
-            thiswb = stimwb - wbBefore + ii        
-            dtemp.loc[dtemp['wb']==thiswb, 'multphase'] += ii
-            dtemp.loc[dtemp['wb']==thiswb, 'wbrel'] -= stimwb
-                
-        #--- Stim wingbeat
-        # label stim wingbeat
-        inds = dtemp['wb']==stimwb
-        dtemp.loc[inds, 'wbstate'] = 'stim'
-        dtemp.loc[inds, 'wbrel'] = 0
-        dtemp.loc[inds, 'pulse'] = pulsecount
-        # Calculate stimulus delay and phase
-        stimdelay = (s - np.argmax(inds))/fsamp*1000 #in ms
-        dtemp.loc[inds, 'stimdelay'] = stimdelay
-        dtemp.loc[inds, 'stimphase'] = stimdelay*fsamp/1000/len(np.where(inds)[0])
+        # Change columns for pre-stim wingbeats
+        dtemp.loc[inds, ['wbstate', 'pulse', 'stimdelay', 'stimphase']] = 'pre', pulsecount, stdelay, stphase
+        
         
         #--- Post-stim wingbeats
         inds = np.where(
             np.logical_and(
                 np.logical_and((dtemp['wb']<=(stimwb+wbAfter)), (dtemp['wb']>stimwb)),
                 (dtemp['wbstate']!='stim')))[0]
-        # Label as post-stim period
-        dtemp.loc[inds, 'wbstate'] = 'post'
-        dtemp.loc[inds, 'pulse'] = pulsecount
-        # TODO: check if this ^ can be optimized. Can do all 3 in single line if needed
-        # Set up phase so it goes from 0->x where x is number of "before" wingbeats
-        for ii in np.arange(wbAfter):
-            thiswb = stimwb + ii + 1
-            dtemp.loc[dtemp['wb']==thiswb, 'multphase'] += ii
-            dtemp.loc[dtemp['wb']==thiswb, 'wbrel'] -= stimwb
+        # Change columns for post-stim wingbeats
+        dtemp.loc[inds, ['wbstate', 'pulse', 'stimdelay', 'stimphase']] = 'post', pulsecount, stdelay, stphase
         
         # Increment global pulse counter
         pulsecount += 1
@@ -191,18 +175,16 @@ for i in goodTrials:
         
 
 da = df.copy()
-# Version without regular wingbeats (eventually move down post-spikesort load)
-df = df[df['wbstate'].isin(['pre','stim','post'])]
-
-# Remove DLM stimulation trials from 20210801
-if date == '20210801':
-    df = df.loc[~df['trial'].isin([5,6,7,8]), ]
         
+
+
+# TODO: Look at difference in spike times, assign those above threshold as different pulses
+
 
 #%% Pull in spike times from spike sorting
 
 # Constants
-stimwindow = 0.001 # s, spikes closer than this time to stim are removed
+stimwindow = 0.002 # s, spikes closer than this time to stim are removed
 
 
 # Load spike times for this date
@@ -259,6 +241,12 @@ for m in channelsEMG:
         # Save closest spikes
         closespikes[m].extend(closest[closest != -1].tolist())
         
+    # Plot the spikes that are too close
+    plt.figure()
+    for i in closespikes[m]:
+        plt.plot(waveforms[m][i,:])
+    plt.title(m)
+    
     # Actually remove spikes that are too close to stim
     spikes[m] = np.delete(spikes[m], (closespikes[m]), axis=0)
     waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0)
@@ -268,8 +256,11 @@ for m in channelsEMG:
     
 
 
-# Test: plot distribution of spikes around stimulus
-
+# Version without regular wingbeats 
+df = da[da['wbstate'].isin(['pre','stim','post'])]
+# Remove DLM stimulation trials from 20210801
+if date == '20210801':
+    df = df.loc[~df['trial'].isin([5,6,7,8]), ]
 
 
 #%% Plot distribution of spike phase for each muscle (for first spike in wingbeat)
@@ -287,7 +278,7 @@ for i,m in enumerate(channelsEMG):
 ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
 
-#%% Plot distributions pre, stim, post
+#%% Plot spike time distributions pre, stim, post
 
 
 fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
@@ -305,7 +296,22 @@ for i,m in enumerate(channelsEMG):
 # Labels and aesthetics
 # ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
 
-#%% Get & plot relative spike times before, during, and after stimulus
+
+#%% Spike phase vs. stimphase
+
+
+fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True,
+                       figsize=(6,9))
+
+for i,m in enumerate(channelsEMG):
+    dt = da.loc[(da['wbstate']=='stim') & 
+                da[m+'_st'], ]
+    ax[i].plot(dt['stimphase'], dt['phase'], '.')
+    ax[i].set_ylabel(m)
+    
+# save
+plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
+            dpi=500)
 
 
 
@@ -374,10 +380,10 @@ for i in np.unique(dt['pulse']):
     data = dt.loc[dt['pulse']==i,].groupby(['wb']).agg(aggdict)
     data['wb'] = data['wb'] - data['wb'].iloc[0]
     # Color by phase
-    colphase = (data.loc[data['wbstate']=='stim', 'stimphase'] - mincol)/(maxcol - mincol)
+    colphase = (data['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
     # Plot pre-stim-post sequence for this pulse
     # for j,m in enumerate(channelsFT):
-    plt.plot(data['wb'], data['mx'] - data.loc[data['wbstate']=='stim', 'mx'],
+    plt.plot(data['wb'], data['mx'] - data['mx'].iloc[3],
                '-', marker='.',
                alpha=0.4,
                color=viridis(colphase))
@@ -385,10 +391,27 @@ for i in np.unique(dt['pulse']):
 
 #%% A quickplot cell
 
-quickPlot('20210803_1', '033',
-          tstart=0, tend=20,
-          plotnames=['stim'])
+# quickPlot('20210714', '009',
+#           tstart=15, tend=17,
+#           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','fz'])
 
+
+wingbeatColor = '#C2C2C2'
+
+plt.figure()
+dd = da.loc[(da['trial']==9) &
+            (da['Time'] > -4) &
+            (da['Time'] < -2), ]
+# Plot wingbeats
+for i in np.unique(dd['wb']):
+    if i % 2 == 0:
+        wbtime = dd.loc[dd['wb']==i, 'Time'].to_numpy()
+        plt.axvspan(wbtime[0], wbtime[-1], lw=0)
+        
+# Plot lines
+for i,m in enumerate(channelsEMG):
+    plt.plot(dd['Time'], dd[m] + i, color=dd['wb'])
+    
 
 #%% Mean traces over time, stimulus marked 
 trial = 11
