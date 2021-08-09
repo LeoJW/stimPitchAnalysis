@@ -22,9 +22,12 @@ from pyfuncs import *
 import time as systime
 
 
-
+# rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
+# for date in rundates:
 #%% Start with single individual
-date = '20210730'
+date = '20210803_1'
+
+plt.close('all')
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -341,7 +344,8 @@ plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + 
 #--- Spike phase pre-, stim, post-
 fig, ax = plt.subplots(len(channelsEMG), 3,
                        sharex=True, sharey=True,
-                       figsize=(6,9))
+                       figsize=(6,9),
+                       gridspec_kw = {'wspace':0, 'hspace':0.1})
 # make plot
 states = ['pre','stim','post']
 for i,m in enumerate(channelsEMG):
