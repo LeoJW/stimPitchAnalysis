@@ -22,17 +22,27 @@ from pyfuncs import *
 import time as systime
 
 
-#%%
+#%% Controls and Constants
+
+#------ Global controls
+# Plot controls
+wbBefore = 4
+wbAfter = 4
+# Figure saving controls
+savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
+figFileType = '.png'
+dpi = 400
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
 channelsExtra = ['stim']
 channelsFT = ['fx','fy','fz','mx','my','mz']
+# More known things
+states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
+namesDLM = ['LDLM', 'RDLM']
+namesDVM = ['LDVM', 'RDVM']
 
-# Plot controls
-wbBefore = 4
-wbAfter = 4
-
+#------ Initial Read and Process Controls
 # Filter Controls
 hpfCutoff = 70
 lpfCutoff = 500
@@ -47,14 +57,32 @@ fzrelheight = 0.25 # count peaks above this amount of min-max height
 stimthresh = 3 # threshold to count stim channel as "on"
 wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in flapping and removed
 
-# Known things
-states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
 
-# Figure saving controls
-savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
-figFileType = '.png'
-dpi = 400
+#------ Spike Sorting Controls
+# Controls
+plotRemoved = False
 
+# Constants
+stimwindow = 0.002 # s, spikes closer than this time to stim are removed
+skiptrials = {
+    '20210730' : [22],
+    '20210803_1' : [19,20]}
+'''
+QUICK FIX FOR 20210730: 22 is not in EMG, but in FT
+Make spikes from trial 22 empty, and shift the current 22-27 to 23-28
+
+LONG FIX: Redo spike sorting, alter offlineSortConvert to catch this
+
+Note that same issue should be present in 20210803_1
+'''
+
+# DLM-DVM timing difference threshold
+dtmaxthresh = 100 # (ms)
+
+
+
+
+#%% Initial read and processing
 
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
@@ -234,26 +262,8 @@ for date in rundates:
     print('Pulling and analyzing spike sorting...')
     tic = systime.perf_counter()
     
-    # Controls
-    plotRemoved = False
-    
-    # Constants
-    stimwindow = 0.002 # s, spikes closer than this time to stim are removed
-    skiptrials = {
-        '20210730' : [22],
-        '20210803_1' : [19,20]}
-    '''
-    QUICK FIX FOR 20210730: 22 is not in EMG, but in FT
-    Make spikes from trial 22 empty, and shift the current 22-27 to 23-28
-    
-    LONG FIX: Redo spike sorting, alter offlineSortConvert to catch this
-    
-    Note that same issue should be present in 20210803_1
-    '''
-    
     # Load spike times for this date
     spikes, waveforms = readSpikeSort(date)
-    
     
     # Preparation, preallocation
     closespikes = {}
@@ -327,24 +337,18 @@ for date in rundates:
         da[m+'_st'] = spikeBoolVec
         
     
-    # Version without regular wingbeats 
-    df = da[da['wbstate'].isin(states)]
-    # Remove DLM stimulation trials from 20210801
-    if date == '20210801':
-        df = df.loc[~df['trial'].isin([5,6,7,8]), ]
+    # # Remove DLM stimulation trials from 20210801
+    # if date == '20210801':
+    #     df = df.loc[~df['trial'].isin([5,6,7,8]), ]
         
     print('    done in ' + str(systime.perf_counter()-tic))
     
     #%% Calculate DLM-DVM relative timing
     print('Relative DLM-DVM timing...')
-    bigtic = systime.perf_counter()
+    tic = systime.perf_counter()
     
     # plot controls
     cols = ['green','red','blue']
-    
-    # Known things
-    namesDLM = ['LDLM', 'RDLM']
-    namesDVM = ['LDVM', 'RDVM']
     
     # Setup, preallocation
     uniquewb = np.unique(da['wb'])
@@ -379,6 +383,9 @@ for date in rundates:
                 firstDVM[j] = DVMspikes[np.argmax(DVMspikes > firstDLM[j])]
                 # calculate deltas
                 dt[i,j] = firstDVM[j] - firstDLM[j]
+    # Change erroneous deltat's to nan
+    dt[dt>dtmaxthresh/1000*fsamp] = np.nan
+    dt[dt<0] = np.nan
     
     # Assign deltas to column in da
     da['dtL'] = np.repeat(dt[:,0], wblen[wbinds[:,0]])
@@ -391,7 +398,7 @@ for date in rundates:
         instate = np.where(wbstate==s)[0]
         plt.hist(dt[instate,0]/fsamp*1000, bins=100, color=cols[i], alpha=0.5)
     
-    print('    done in ' + str(systime.perf_counter()-bigtic))
+    print('    done in ' + str(systime.perf_counter()-tic))
     
     
     #%% Plot timing difference against F/T variables
@@ -405,7 +412,7 @@ for date in rundates:
     for i in channelsFT:
         aggdict[i] = 'mean'
     # aggregate dataframe
-    dt = da.loc[da['wbstate'].isin(states), ].groupby('wb').agg(aggdict)
+    df = da.loc[da['wbstate'].isin(states), ].groupby('wb').agg(aggdict)
     
     
     # Plot
@@ -413,13 +420,12 @@ for date in rundates:
                              sharex=True, sharey='row')
     figR, axR = plt.subplots(len(channelsFT), len(states), figsize=(9,9),
                              sharex=True, sharey='row')
-    
     for j,s in enumerate(states):    
-        data = dt.loc[dt['wbstate']==s, ]
+        data = df.loc[df['wbstate']==s, ]
         for i,m in enumerate(channelsFT):
-            inds = data['dtL']!=0
+            inds = np.logical_and(data['dtL']!=0, data['dtL'] < dtmaxthresh)
             axL[i,j].plot(data['dtL'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
-            inds = data['dtR']!=0
+            inds = np.logical_and(data['dtR']!=0, data['dtR'] < dtmaxthresh)
             axR[i,j].plot(data['dtR'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
     # Label plots
     for j,s in enumerate(states):
@@ -466,9 +472,9 @@ for date in rundates:
                            figsize=(6,9))
     
     for i,m in enumerate(channelsEMG):
-        dt = da.loc[(da['wbstate']=='stim') & 
+        df = da.loc[(da['wbstate']=='stim') & 
                     da[m+'_st'], ]
-        ax[i].plot(dt['stimphase'], dt['phase'], '.', markersize=1)
+        ax[i].plot(df['stimphase'], df['phase'], '.', markersize=1)
         ax[i].set_ylabel(m)
     # save
     plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + figFileType,
@@ -483,9 +489,9 @@ for date in rundates:
     # make plot
     for i,m in enumerate(channelsEMG):
         for j,s in enumerate(states):
-            dt = da.loc[(da['wbstate']==s) & 
+            df = da.loc[(da['wbstate']==s) & 
                         da[m+'_st'], ]
-            ax[i,j].plot(dt['stimphase'], dt['phase'], '.', markersize=1)
+            ax[i,j].plot(df['stimphase'], df['phase'], '.', markersize=1)
     # labels, aesthetics
     for i,m in enumerate(channelsEMG):
         ax[i,0].set_ylabel(m)
@@ -514,16 +520,16 @@ for date in rundates:
     
     # Make aggregate control dictionary
     aggdict = {}
-    for i in list(df.select_dtypes(include=np.number)): # loop over all numeric columns
+    for i in list(da.select_dtypes(include=np.number)): # loop over all numeric columns
         aggdict[i] = 'mean'
     aggdict['wbstate'] = 'first'
     
     # Keeping only stim wingbeats, take wingbeat means
-    dt = df.loc[df['wbstate']=='stim',].groupby('wb').agg(aggdict)
+    df = da.loc[da['wbstate']=='stim',].groupby('wb').agg(aggdict)
     
     # Remove DLM stimulation trials from 20210801
     if date == '20210801':
-        dt = dt.loc[~dt['trial'].isin([5,6,7,8]), ]
+        df = df.loc[~df['trial'].isin([5,6,7,8]), ]
     
     # Setup plot
     fig, ax  = plt.subplots(3, 1, sharex='all', figsize=(4,8), gridspec_kw={'left' : 0.16})
@@ -531,7 +537,7 @@ for date in rundates:
     
     # Loop over moments, plot
     for i,name in enumerate(plotchannels):
-        ax[i].plot(dt['stimphase'], dt[name], '.')
+        ax[i].plot(df['stimphase'], df[name], '.')
     
     # Plot aesthetics
     for i,name in enumerate(plotchannels):
@@ -552,16 +558,17 @@ for date in rundates:
     plt.figure()
     viridis = cmx.get_cmap('viridis')
     
-    dt = df.loc[df['pulse']!=259, ]
-    mincol = np.min(dt['stimphase'])
-    maxcol = np.max(dt['stimphase'])
+    df = da.loc[(da['wbstate'].isin(states)) &
+                (da['pulse']!=259), ]
+    mincol = np.min(df['stimphase'])
+    maxcol = np.max(df['stimphase'])
     
     plotvar = 'fz'
     
     # Loop over pulses
-    for i in np.unique(dt['pulse']):
+    for i in np.unique(df['pulse']):
         # Grab this pulse, take wb means
-        data = dt.loc[dt['pulse']==i,].groupby(['wb']).agg(aggdict)
+        data = df.loc[df['pulse']==i,].groupby(['wb']).agg(aggdict)
         data['wb'] = data['wb'] - data['wb'].iloc[0]
         # only continue if enough got picked up 
         if len(data) > wbBefore:
