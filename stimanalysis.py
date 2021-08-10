@@ -50,16 +50,22 @@ wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in
 # Known things
 states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
 
-# Directory information
+# Figure saving controls
 savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
+figFileType = '.png'
+dpi = 400
 
 
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-rundates = ['20210714']
+rundates = ['20210801']
 for date in rundates:
     plt.close('all')
-        
+    
+    print(date)
+    print('Reading in main data...')
+    tic = systime.perf_counter()
+    
     #- Load data
     # Read empty FT for bias
     biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True)
@@ -87,8 +93,6 @@ for date in rundates:
         tic = systime.perf_counter()
         # Make string version of trial
         trial = str(i).zfill(3)
-        # print to let user know what's up
-        print('  '+trial)
         
         # Read data 
         emg, emgnames, _ = readMatFile(date, trial, doFT=False, grabOnly=channelsEMG+channelsExtra)
@@ -210,7 +214,6 @@ for date in rundates:
             df = dtemp
         else:
             df = pd.concat([df,dtemp])
-        print(systime.perf_counter()-tic)
             
     # Save to da (dataframe_all)
     da = df.copy()
@@ -223,12 +226,12 @@ for date in rundates:
     # length of each wingbeat (useful)
     wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
 
-    
+    print('    done in ' + str(systime.perf_counter()-tic))
     # TODO: Look at difference in stim times, assign those above threshold as different pulses
     
     
     #%% Pull in spike times from spike sorting
-    print('Pulling and analyzing spike sorting.....')
+    print('Pulling and analyzing spike sorting...')
     tic = systime.perf_counter()
     
     # Controls
@@ -333,7 +336,7 @@ for date in rundates:
     print('    done in ' + str(systime.perf_counter()-tic))
     
     #%% Calculate DLM-DVM relative timing
-    print('Relative DLM-DVM timing')
+    print('Relative DLM-DVM timing...')
     bigtic = systime.perf_counter()
     
     # plot controls
@@ -392,7 +395,7 @@ for date in rundates:
     
     
     #%% Plot timing difference against F/T variables
-    
+    tic = systime.perf_counter()
     # Make aggregation control dictionary
     aggdict = {}
     # Take first value of all variables
@@ -412,11 +415,12 @@ for date in rundates:
                              sharex=True, sharey='row')
     
     for j,s in enumerate(states):    
-        data = dt.loc[(dt['wbstate']==s) &
-                      ((dt['dtL']!=0) | (dt['dtR']!=0)), ]
+        data = dt.loc[dt['wbstate']==s, ]
         for i,m in enumerate(channelsFT):
-            axL[i,j].plot(data['dtL']/fsamp*1000, data[m], '.', markersize=0.8)
-            axR[i,j].plot(data['dtR']/fsamp*1000, data[m], '.', markersize=0.8)
+            inds = data['dtL']!=0
+            axL[i,j].plot(data['dtL'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
+            inds = data['dtR']!=0
+            axR[i,j].plot(data['dtR'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
     # Label plots
     for j,s in enumerate(states):
         axL[len(channelsFT)-1,j].set_xlabel(s)
@@ -425,13 +429,13 @@ for date in rundates:
         axL[i,0].set_ylabel(m)
         axR[i,0].set_ylabel(m)
     
-    
+    print(systime.perf_counter()-tic)
     # Save plots
     savefigdir = os.path.dirname(__file__) + '/pics/'
     plt.figure(figL.number)
-    plt.savefig(savefigdir + 'dtL_vs_variables_' + date + '.pdf', dpi=500)
+    plt.savefig(savefigdir + 'dtL_vs_variables_' + date + figFileType, dpi=dpi)
     plt.figure(figR.number)
-    plt.savefig(savefigdir + 'dtR_vs_variables_' + date + '.pdf', dpi=500)
+    plt.savefig(savefigdir + 'dtR_vs_variables_' + date + figFileType, dpi=dpi)
 
     #%% Plot distribution of spike phase for each muscle 
     
@@ -464,11 +468,11 @@ for date in rundates:
     for i,m in enumerate(channelsEMG):
         dt = da.loc[(da['wbstate']=='stim') & 
                     da[m+'_st'], ]
-        ax[i].plot(dt['stimphase'], dt['phase'], '.')
+        ax[i].plot(dt['stimphase'], dt['phase'], '.', markersize=1)
         ax[i].set_ylabel(m)
     # save
-    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + '.pdf',
-                dpi=500)
+    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + figFileType,
+                dpi=dpi)
     
     
     #--- Spike phase pre-, stim, post-
@@ -481,7 +485,7 @@ for date in rundates:
         for j,s in enumerate(states):
             dt = da.loc[(da['wbstate']==s) & 
                         da[m+'_st'], ]
-            ax[i,j].plot(dt['stimphase'], dt['phase'], '.')
+            ax[i,j].plot(dt['stimphase'], dt['phase'], '.', markersize=1)
     # labels, aesthetics
     for i,m in enumerate(channelsEMG):
         ax[i,0].set_ylabel(m)
@@ -490,8 +494,8 @@ for date in rundates:
     ax[0,0].set_xlim((0,1))
     ax[0,0].set_ylim((0,1))
     # save
-    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
-                dpi=500)
+    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
+                dpi=dpi)
     
     
     
@@ -535,8 +539,8 @@ for date in rundates:
     ax[0].set_xlim((0, 1))
     ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
     # save
-    plt.savefig(savefigdir + date + '_stimphase_meanTorque.pdf',
-                dpi=500)
+    plt.savefig(savefigdir + date + '_stimphase_meanTorque' + figFileType,
+                dpi=dpi)
     
     
     
