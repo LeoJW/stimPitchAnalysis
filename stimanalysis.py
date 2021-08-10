@@ -23,39 +23,43 @@ import time as systime
 
 
 #%%
+
+# Channel names to process
+channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
+channelsExtra = ['stim']
+channelsFT = ['fx','fy','fz','mx','my','mz']
+
+# Plot controls
+wbBefore = 4
+wbAfter = 4
+
+# Filter Controls
+hpfCutoff = 70
+lpfCutoff = 500
+
+# Wingbeat finding
+zforceCutoffLPF = 40
+zforceCutoffHPF = 10
+wbdistance = 300 # samples
+fzrelheight = 0.25 # count peaks above this amount of min-max height
+
+# Thresholds
+stimthresh = 3 # threshold to count stim channel as "on"
+wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in flapping and removed
+
+# Known things
+states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
+
+# Directory information
+savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
+
+
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
 rundates = ['20210714']
 for date in rundates:
     plt.close('all')
-    
-    # Channel names to process
-    channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
-    channelsExtra = ['stim']
-    channelsFT = ['fx','fy','fz','mx','my','mz']
-    
-    # Plot controls
-    wbBefore = 4
-    wbAfter = 4
-    
-    # Filter Controls
-    hpfCutoff = 70
-    lpfCutoff = 500
-    
-    # Wingbeat finding
-    zforceCutoffLPF = 40
-    zforceCutoffHPF = 10
-    wbdistance = 300 # samples
-    fzrelheight = 0.25 # count peaks above this amount of min-max height
-    
-    # Thresholds
-    stimthresh = 3 # threshold to count stim channel as "on"
-    wblengththresh = 0.1 # wingbeats longer than this time in s are deemed pauses in flapping and removed
-    
-    # Known things
-    states = ['pre','stim','post'] # names of wingbeat states that aren't just "regular"
-    
-    
+        
     #- Load data
     # Read empty FT for bias
     biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True)
@@ -398,7 +402,36 @@ for date in rundates:
     for i in channelsFT:
         aggdict[i] = 'mean'
     # aggregate dataframe
-    dt = data.loc[data['trial']==trial,].groupby('wb').agg(aggdict)
+    dt = da.loc[da['wbstate'].isin(states), ].groupby('wb').agg(aggdict)
+    
+    
+    # Plot
+    figL, axL = plt.subplots(len(channelsFT), len(states), figsize=(9,9),
+                             sharex=True, sharey='row')
+    figR, axR = plt.subplots(len(channelsFT), len(states), figsize=(9,9),
+                             sharex=True, sharey='row')
+    
+    for j,s in enumerate(states):    
+        data = dt.loc[(dt['wbstate']==s) &
+                      ((dt['dtL']!=0) | (dt['dtR']!=0)), ]
+        for i,m in enumerate(channelsFT):
+            axL[i,j].plot(data['dtL']/fsamp*1000, data[m], '.', markersize=0.8)
+            axR[i,j].plot(data['dtR']/fsamp*1000, data[m], '.', markersize=0.8)
+    # Label plots
+    for j,s in enumerate(states):
+        axL[len(channelsFT)-1,j].set_xlabel(s)
+        axR[len(channelsFT)-1,j].set_xlabel(s)
+    for i,m in enumerate(channelsFT):
+        axL[i,0].set_ylabel(m)
+        axR[i,0].set_ylabel(m)
+    
+    
+    # Save plots
+    savefigdir = os.path.dirname(__file__) + '/pics/'
+    plt.figure(figL.number)
+    plt.savefig(savefigdir + 'dtL_vs_variables_' + date + '.pdf', dpi=500)
+    plt.figure(figR.number)
+    plt.savefig(savefigdir + 'dtR_vs_variables_' + date + '.pdf', dpi=500)
 
     #%% Plot distribution of spike phase for each muscle 
     
@@ -434,7 +467,7 @@ for date in rundates:
         ax[i].plot(dt['stimphase'], dt['phase'], '.')
         ax[i].set_ylabel(m)
     # save
-    plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
+    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + '.pdf',
                 dpi=500)
     
     
@@ -457,7 +490,7 @@ for date in rundates:
     ax[0,0].set_xlim((0,1))
     ax[0,0].set_ylim((0,1))
     # save
-    plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
+    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + '.pdf',
                 dpi=500)
     
     
@@ -502,7 +535,7 @@ for date in rundates:
     ax[0].set_xlim((0, 1))
     ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
     # save
-    plt.savefig(os.path.dirname(__file__) + '/pics/' + date + '_stimphase_meanTorque.pdf',
+    plt.savefig(savefigdir + date + '_stimphase_meanTorque.pdf',
                 dpi=500)
     
     
@@ -545,14 +578,6 @@ for date in rundates:
 #           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx'])
 
     
-    
-
-
-#%%
-
-dd = da.loc[(da['wbstate']=='pre') &
-            (da['trial']==10), ]
-
 
 
 
@@ -567,7 +592,7 @@ TODO
 - Move to non-pandas version? Make pandas dataframe only after processing?
 - Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
 - Handle spiek sorting _up and _down files without repeating spikes
-- Create mean before-stim-after plots
+- Change dataframe name "dt" to "df", make easier to understand
 
 - Mean vs stim phase: Change to also do DIFF from previous wingbeat
 '''
