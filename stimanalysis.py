@@ -85,8 +85,8 @@ dtmaxthresh = 100 # (ms)
 #%% Initial read and processing
 
 # Loop over list of individuals
-# rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-rundates = ['20210801']
+rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
+# rundates = ['20210727']
 for date in rundates:
     plt.close('all')
     
@@ -113,12 +113,10 @@ for date in rundates:
     ^Note the +1: For trials I'm sticking to a 1-indexing convention.
     This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
     given the way the trials were originally numbered!
-    '''
-    
+    '''    
     
     # Loop over all, read in data
     for i in goodTrials:
-        tic = systime.perf_counter()
         # Make string version of trial
         trial = str(i).zfill(3)
         
@@ -423,9 +421,11 @@ for date in rundates:
     for j,s in enumerate(states):    
         data = df.loc[df['wbstate']==s, ]
         for i,m in enumerate(channelsFT):
-            inds = np.logical_and(data['dtL']!=0, data['dtL'] < dtmaxthresh)
+            inds = data['dtL']!=0
+            # inds = np.logical_and(data['dtL']!=0, data['dtL'] < dtmaxthresh)
             axL[i,j].plot(data['dtL'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
-            inds = np.logical_and(data['dtR']!=0, data['dtR'] < dtmaxthresh)
+            # inds = np.logical_and(data['dtR']!=0, data['dtR'] < dtmaxthresh)
+            inds = data['dtR']!=0
             axR[i,j].plot(data['dtR'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
     # Label plots
     for j,s in enumerate(states):
