@@ -218,8 +218,6 @@ for date in rundates:
     wb = da['wb'].to_numpy()
     # length of each wingbeat (useful)
     wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
-    # First index of each wb
-    wbfirstinds = np.unique(da.wb.values, return_index=1)[1]
 
     
     # TODO: Look at difference in stim times, assign those above threshold as different pulses
@@ -343,7 +341,7 @@ for date in rundates:
     
     # Setup, preallocation
     uniquewb = np.unique(da['wb'])
-    wbstate = da['wbstate'].iloc[wbfirstinds]
+    wbstate = da['wbstate'].iloc[wbinds[:,0]]
     firstDLM = np.zeros(2)
     firstDVM = np.zeros(2)
     dt = np.zeros((len(uniquewb),2)) # L,R
@@ -376,8 +374,8 @@ for date in rundates:
                 dt[i,j] = firstDVM[j] - firstDLM[j]
     
     # Assign deltas to column in da
-    # da['dtL'] = np.repeat(dt[:,0], wblen[wbfirstinds])
-    # da['dtR'] = np.repeat(dt[:,1], wblen[wbfirstinds])
+    da['dtL'] = np.repeat(dt[:,0], wblen[wbinds[:,0]])
+    da['dtR'] = np.repeat(dt[:,1], wblen[wbinds[:,0]])
     
     
     plt.figure()
@@ -388,7 +386,19 @@ for date in rundates:
     
     print('    done in ' + str(systime.perf_counter()-bigtic))
     
-
+    
+    #%% Plot timing difference against F/T variables
+    
+    # Make aggregation control dictionary
+    aggdict = {}
+    # Take first value of all variables
+    for i in list(da):
+        aggdict[i] = 'first'
+    # except make FT variables take mean
+    for i in channelsFT:
+        aggdict[i] = 'mean'
+    # aggregate dataframe
+    dt = data.loc[data['trial']==trial,].groupby('wb').agg(aggdict)
 
     #%% Plot distribution of spike phase for each muscle 
     
@@ -427,8 +437,6 @@ for date in rundates:
     plt.savefig(os.path.dirname(__file__) + '/pics/' + 'stimphase_vs_spiketimes_' + date + '.pdf',
                 dpi=500)
     
-    # Get length of wingbeats in samples
-    # wblen = da.groupby(['wb','trial'])['wb'].transform('count')
     
     #--- Spike phase pre-, stim, post-
     fig, ax = plt.subplots(len(channelsEMG), 3,
@@ -474,7 +482,7 @@ for date in rundates:
     aggdict['wbstate'] = 'first'
     
     # Keeping only stim wingbeats, take wingbeat means
-    dt = df.loc[df['wbstate']=='stim',].groupby(['wb','trial']).agg(aggdict)
+    dt = df.loc[df['wbstate']=='stim',].groupby('wb').agg(aggdict)
     
     # Remove DLM stimulation trials from 20210801
     if date == '20210801':

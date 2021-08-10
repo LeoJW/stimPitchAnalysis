@@ -526,7 +526,7 @@ def wbmeanplot(plotvars, data, trial):
         aggdict[i] = 'mean'
     aggdict['wbstate'] = 'first'
     # aggregate dataframe
-    dt = da.loc[data['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
+    dt = data.loc[data['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
     
     # Plot wb mean values for this trial
     fig, ax = plt.subplots(len(plotvars), 1, sharex='all')
