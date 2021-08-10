@@ -68,6 +68,8 @@ for date in rundates:
     # Create variables for loop
     pulsecount = 1
     lastwb = 0
+    lastwbind = 0
+    wbinds = [] # global first,last index pairs for each wingbeat
     stiminds = [[] for x in range(goodTrials[-1]+1)] 
     ''' 
     ^Note the +1: For trials I'm sticking to a 1-indexing convention.
@@ -108,11 +110,19 @@ for date in rundates:
                         distance=wbdistance,
                         height=fzpeakheight)[0]
         
+        # Save wingbeat indices
+        wbinds.append(
+            np.column_stack((
+                np.insert(wb, 0, 0),
+                np.insert(wb, len(wb), len(emg['Time'])-1)
+                )) + lastwbind )
+        # Update length of wingbeat inds
+        lastwbind += len(emg['Time'])
         # Make long-form wingbeat column in dataframe (useful for stuff)
         dtemp['wb'] = 0
         dtemp.loc[wb, 'wb'] = 1
         dtemp['wb'] = np.cumsum(dtemp['wb']) + lastwb
-        lastwb = dtemp['wb'].iloc[-1]
+        lastwb = dtemp['wb'].iloc[-1] + 1
         
         # # Test plot for diagnosing issues
         # plt.figure()
@@ -198,10 +208,13 @@ for date in rundates:
             df = pd.concat([df,dtemp])
         print(systime.perf_counter()-tic)
             
-    
+    # Save to da (dataframe_all)
     da = df.copy()
+    
             
     #--- Calculate useful quantities/vectors
+    # Wingbeat vectors
+    wbinds = np.vstack(wbinds)
     wb = da['wb'].to_numpy()
     # length of each wingbeat (useful)
     wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
@@ -319,7 +332,7 @@ for date in rundates:
     
     #%% Calculate DLM-DVM relative timing
     print('Relative DLM-DVM timing')
-    tic = systime.perf_counter()
+    bigtic = systime.perf_counter()
     
     # plot controls
     cols = ['green','red','blue']
@@ -343,8 +356,8 @@ for date in rundates:
     # Loop over wingbeats
     for i,w in enumerate(uniquewb):        
         # Grab this wingbeat's data
-        # thiswb = da.loc[(da['wb']>=w) & (da['wb']<=w+1), ] # Includes next wingbeat for rollovers
-        thiswb = da.loc[np.logical_and(wb>=w, wb<=w+1), ]
+        thiswb = da.iloc[wbinds[i,0]:wbinds[i,1]]
+        
         # Loop over DLMs
         for j in np.where(bothOnSide)[0]:
             # Get first L&R DLM spike for each wingbeat
@@ -363,8 +376,8 @@ for date in rundates:
                 dt[i,j] = firstDVM[j] - firstDLM[j]
     
     # Assign deltas to column in da
-    da['dtL'] = np.repeat(dt[:,0], wblen[wbfirstinds])
-    da['dtR'] = np.repeat(dt[:,1], wblen[wbfirstinds])
+    # da['dtL'] = np.repeat(dt[:,0], wblen[wbfirstinds])
+    # da['dtR'] = np.repeat(dt[:,1], wblen[wbfirstinds])
     
     
     plt.figure()
@@ -373,17 +386,9 @@ for date in rundates:
         instate = np.where(wbstate==s)[0]
         plt.hist(dt[instate,0]/fsamp*1000, bins=100, color=cols[i], alpha=0.5)
     
-    print('    done in ' + str(systime.perf_counter()-tic))
+    print('    done in ' + str(systime.perf_counter()-bigtic))
     
-#%%
 
-
-tic = systime.perf_counter()
-wb = da['wb'].to_numpy()
-# bob = np.where(np.logical_or(wb==10, wb==11))[0]
-bob = np.where(np.logical_and(wb>=10, wb<=11))[0]
-bob = np.where(wb==10)[0]
-print(systime.perf_counter()-tic)
 
     #%% Plot distribution of spike phase for each muscle 
     
