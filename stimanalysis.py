@@ -29,6 +29,7 @@ import time as systime
 wbBefore = 4
 wbAfter = 4
 # Figure saving controls
+saveplots = True
 savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
 figFileType = '.png'
 dpi = 400
@@ -429,20 +430,75 @@ for date in rundates:
             axR[i,j].plot(data['dtR'][inds]/fsamp*1000, data[m][inds], '.', markersize=0.8)
     # Label plots
     for j,s in enumerate(states):
-        axL[len(channelsFT)-1,j].set_xlabel(s)
-        axR[len(channelsFT)-1,j].set_xlabel(s)
+        axL[0,j].set_title(s)
+        axR[0,j].set_title(s)
+    axL[len(channelsFT)-1,1].set_xlabel('DLM-DVM first spike time difference (ms)')
+    axR[len(channelsFT)-1,1].set_xlabel('DLM-DVM first spike time difference (ms)')
     for i,m in enumerate(channelsFT):
         axL[i,0].set_ylabel(m)
         axR[i,0].set_ylabel(m)
     
     print(systime.perf_counter()-tic)
     # Save plots
-    savefigdir = os.path.dirname(__file__) + '/pics/'
-    plt.figure(figL.number)
-    plt.savefig(savefigdir + 'dtL_vs_variables_' + date + figFileType, dpi=dpi)
-    plt.figure(figR.number)
-    plt.savefig(savefigdir + 'dtR_vs_variables_' + date + figFileType, dpi=dpi)
-
+    if saveplots:
+        plt.figure(figL.number)
+        plt.savefig(savefigdir + 'dtL_vs_variables_' + date + figFileType, dpi=dpi)
+        plt.figure(figR.number)
+        plt.savefig(savefigdir + 'dtR_vs_variables_' + date + figFileType, dpi=dpi)
+    
+    #%% DLM-DVM spike timing difference, but with waveforms, colored by time difference
+    plt.style.use('dark_background')
+    # plot controls
+    nbins = 5
+    plotvar = 'fx'
+    # Set up color scheme
+    viridis = cmx.get_cmap('viridis')    
+    # which wingbeats have measured spike time diff
+    hasdiff = np.all(~np.isnan(dt), axis=1)    
+    
+    # Loop over left, right
+    for ilr,lr in enumerate(['L','R']):
+        # set up figures
+        fig, ax = plt.subplots(1, len(states),
+                               sharex=True, sharey='row',
+                               figsize=(13,7),
+                               gridspec_kw={'wspace' : 0})
+        
+        # spike time difference range to set colors with
+        # (simply grabbing dt's that aren't 0 or nan)
+        dtgood = dt[((dt!=0) & ~np.isnan(dt))[:,ilr], ilr]
+        if len(dtgood)!=0:
+            stmin = np.min(dtgood)
+            stmax = np.max(dtgood)
+        else:
+            continue
+        # plot variable range to set spacing with
+        plotvarScale = (np.max(da[plotvar]) - np.min(da[plotvar]))/2
+        print(plotvarScale)
+        # Create bins
+        bins = np.linspace(stmin, stmax, nbins)
+        # Loop over states
+        for j,s in enumerate(states):
+            # Which wingbeats are in this state, have measured spike time diff
+            thiswb = uniquewb[(hasdiff) & (wbstate==s)]
+            # Loop over wingbeats
+            for i,w in enumerate(thiswb):
+                # Determine spike time difference of this wingbeat
+                thisdt = da['dt'+lr].iloc[wbinds[w,0]+1]
+                thisbin = np.digitize(thisdt, bins)
+                # Plot!
+                ax[j].plot(da['phase'].iloc[wbinds[w,0]:wbinds[w,1]],
+                           da[plotvar].iloc[wbinds[w,0]:wbinds[w,1]] + plotvarScale*thisbin,
+                           lw=0.5, alpha=0.8,
+                           color=viridis(thisbin/nbins))
+        if saveplots:
+            plt.savefig(savefigdir+'staggeredWaveforms/'+plotvar+'_'+lr+'_'+date+figFileType,
+                        dpi=dpi)
+    
+    # Set style back to normal
+    plt.style.use('default')
+    
+    
     #%% Plot distribution of spike phase for each muscle 
     
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
@@ -477,8 +533,9 @@ for date in rundates:
         ax[i].plot(df['stimphase'], df['phase'], '.', markersize=1)
         ax[i].set_ylabel(m)
     # save
-    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + figFileType,
-                dpi=dpi)
+    if saveplots:
+        plt.savefig(savefigdir + 'stimphase_vs_spiketimes_' + date + figFileType,
+                    dpi=dpi)
     
     
     #--- Spike phase pre-, stim, post-
@@ -500,12 +557,10 @@ for date in rundates:
     ax[0,0].set_xlim((0,1))
     ax[0,0].set_ylim((0,1))
     # save
-    plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
-                dpi=dpi)
+    if saveplots:
+        plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
+                    dpi=dpi)
     
-    
-    
-    #%% Plot how mean torques/forces vary with relative spike times DUE TO STIMULUS
     
     
     
@@ -545,8 +600,9 @@ for date in rundates:
     ax[0].set_xlim((0, 1))
     ax[len(plotchannels)-1].set_xlabel('Stimulus phase')
     # save
-    plt.savefig(savefigdir + date + '_stimphase_meanTorque' + figFileType,
-                dpi=dpi)
+    if saveplots:
+        plt.savefig(savefigdir + date + '_stimphase_meanTorque' + figFileType,
+                    dpi=dpi)
     
     
     
@@ -576,7 +632,7 @@ for date in rundates:
             colphase = (data['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
             # Plot pre-stim-post sequence for this pulse
             # for j,m in enumerate(channelsFT):
-            plt.plot(data['wb'], data['fz'] - data['fz'].iloc[wbBefore],
+            plt.plot(data['wb'], data['fz'] - data['fz'].iloc[0],
                        '-', marker='.',
                        alpha=0.4,
                        color=viridis(colphase))
@@ -587,9 +643,6 @@ for date in rundates:
 # quickPlot('20210730', '023',
 #           tstart=0, tend=20,
 #           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx'])
-
-    
-
 
 
 
@@ -603,7 +656,6 @@ TODO
 - Move to non-pandas version? Make pandas dataframe only after processing?
 - Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
 - Handle spiek sorting _up and _down files without repeating spikes
-- Change dataframe name "dt" to "df", make easier to understand
 
 - Mean vs stim phase: Change to also do DIFF from previous wingbeat
 '''
