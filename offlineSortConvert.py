@@ -57,13 +57,17 @@ for dircount,d in enumerate(trialdirs):
     # Rearrange
     mfiles = [mfiles[i] for i in np.argsort(neworder)]
     
+    # Get how many files there are from last trial number
+    nfiles = int(mfiles[-1][-7:-4])
+    
     # Preallocate arrays to save for each channel
     final = {}
     for x in sortChannels:
-        final[x] = np.zeros((len(mfiles), 20*10000))
+        final[x] = np.zeros((nfiles, 20*10000))
     
     # Loop over mat files
     for ii,f in enumerate(mfiles):
+        ind = int(f[-7:-4]) - 1
         # Read this mat file
         mat = scipy.io.loadmat(f)
         # Grab filename from first dict key that doesn't start with '_'
@@ -81,7 +85,7 @@ for dircount,d in enumerate(trialdirs):
             # Find which column has data for this channel
             col = [i for i,x in enumerate(names) if x==ch]
             # Transpose and place into row of final array
-            final[ch][ii,0:np.shape(datamat[:,col])[0]] = np.transpose(datamat[:,col])
+            final[ch][ind,0:np.shape(datamat[:,col])[0]] = np.transpose(datamat[:,col])
         
     # Jump into spikesort folder
     os.chdir(spikesortdir)
