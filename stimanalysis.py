@@ -32,7 +32,7 @@ wbAfter = 4
 saveplots = True
 savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
 figFileType = '.png'
-dpi = 400
+dpi = 300
 
 # Channel names to process
 channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
@@ -71,10 +71,8 @@ skiptrials = {
 '''
 QUICK FIX FOR 20210730: 22 is not in EMG, but in FT
 Make spikes from trial 22 empty, and shift the current 22-27 to 23-28
-
-LONG FIX: Redo spike sorting, alter offlineSortConvert to catch this
-
-Note that same issue should be present in 20210803_1
+LONG FIX: Redo spike sorting
+Note that same issue is present in 20210803_1
 '''
 
 # DLM-DVM timing difference threshold
@@ -447,54 +445,67 @@ for date in rundates:
         plt.savefig(savefigdir + 'dtR_vs_variables_' + date + figFileType, dpi=dpi)
     
     #%% DLM-DVM spike timing difference, but with waveforms, colored by time difference
+    
     plt.style.use('dark_background')
     # plot controls
     nbins = 5
-    plotvar = 'fx'
     # Set up color scheme
     viridis = cmx.get_cmap('viridis')    
     # which wingbeats have measured spike time diff
     hasdiff = np.all(~np.isnan(dt), axis=1)    
     
-    # Loop over left, right
-    for ilr,lr in enumerate(['L','R']):
-        # set up figures
-        fig, ax = plt.subplots(1, len(states),
-                               sharex=True, sharey='row',
-                               figsize=(13,7),
-                               gridspec_kw={'wspace' : 0})
+    # Loop over F/T channels
+    for plotvar in channelsFT:
+        # Loop over left, right
+        for ilr,lr in enumerate(['L','R']):
+            # set up figures
+            fig, ax = plt.subplots(1, len(states),
+                                   sharex=True, sharey='row',
+                                   figsize=(13,7),
+                                   gridspec_kw={'wspace' : 0})
+            
+            # spike time difference range to set colors with
+            # (simply grabbing dt's that aren't 0 or nan)
+            dtgood = dt[((dt!=0) & ~np.isnan(dt))[:,ilr], ilr]
+            if len(dtgood)!=0:
+                stmin = np.min(dtgood)
+                stmax = np.max(dtgood)
+            else:
+                continue
+            # plot variable range to set spacing with
+            plotvarScale = (np.max(da[plotvar]) - np.min(da[plotvar]))/2
+            # Create bins
+            bins = np.linspace(stmin, stmax, nbins)
+            # Loop over states
+            for j,s in enumerate(states):
+                # Which wingbeats are in this state, have measured spike time diff
+                thiswb = uniquewb[(hasdiff) & (wbstate==s)]
+                # Loop over wingbeats
+                for i,w in enumerate(thiswb):
+                    # Determine spike time difference of this wingbeat
+                    thisdt = da['dt'+lr].iloc[wbinds[w,0]+1]
+                    thisbin = np.digitize(thisdt, bins)
+                    # Plot!
+                    ax[j].plot(da['phase'].iloc[wbinds[w,0]:wbinds[w,1]],
+                               da[plotvar].iloc[wbinds[w,0]:wbinds[w,1]] + plotvarScale*thisbin,
+                               lw=0.5, alpha=0.8,
+                               color=viridis(thisbin/nbins))
+            # Label timing difference bins
+            for i in range(len(bins)):
+                rangelow = f'{bins[i]/fsamp*1000:.1f}'
+                if i==len(bins)-1:
+                    rangehigh = '->'
+                else:
+                    rangehigh = f'{bins[i+1]/fsamp*1000:.1f}'
+                ax[0].text(0.1, -plotvarScale/2 + plotvarScale*i, rangelow+'-'+rangehigh+' ms',
+                           color='white')
+            # Label overall plot
+            ax[1].set_title(plotvar)
+            
+            if saveplots:
+                plt.savefig(savefigdir+'staggeredWaveforms/'+plotvar+'_'+lr+'_'+date+figFileType,
+                            dpi=dpi)
         
-        # spike time difference range to set colors with
-        # (simply grabbing dt's that aren't 0 or nan)
-        dtgood = dt[((dt!=0) & ~np.isnan(dt))[:,ilr], ilr]
-        if len(dtgood)!=0:
-            stmin = np.min(dtgood)
-            stmax = np.max(dtgood)
-        else:
-            continue
-        # plot variable range to set spacing with
-        plotvarScale = (np.max(da[plotvar]) - np.min(da[plotvar]))/2
-        print(plotvarScale)
-        # Create bins
-        bins = np.linspace(stmin, stmax, nbins)
-        # Loop over states
-        for j,s in enumerate(states):
-            # Which wingbeats are in this state, have measured spike time diff
-            thiswb = uniquewb[(hasdiff) & (wbstate==s)]
-            # Loop over wingbeats
-            for i,w in enumerate(thiswb):
-                # Determine spike time difference of this wingbeat
-                thisdt = da['dt'+lr].iloc[wbinds[w,0]+1]
-                thisbin = np.digitize(thisdt, bins)
-                # Plot!
-                ax[j].plot(da['phase'].iloc[wbinds[w,0]:wbinds[w,1]],
-                           da[plotvar].iloc[wbinds[w,0]:wbinds[w,1]] + plotvarScale*thisbin,
-                           lw=0.5, alpha=0.8,
-                           color=viridis(thisbin/nbins))
-        if saveplots:
-            plt.savefig(savefigdir+'staggeredWaveforms/'+plotvar+'_'+lr+'_'+date+figFileType,
-                        dpi=dpi)
-    
     # Set style back to normal
     plt.style.use('default')
     
@@ -637,6 +648,9 @@ for date in rundates:
                        alpha=0.4,
                        color=viridis(colphase))
         
+    
+    #%% Make plots of characterization trials
+    
     
 #%% A quickplot cell
 
