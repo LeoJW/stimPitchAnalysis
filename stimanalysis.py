@@ -29,7 +29,7 @@ import time as systime
 wbBefore = 4
 wbAfter = 4
 # Figure saving controls
-saveplots = True
+saveplots = False
 savefigdir = os.path.dirname(__file__) + '/pics/' # dir to save figures in
 figFileType = '.png'
 dpi = 300
@@ -84,8 +84,8 @@ dtmaxthresh = 100 # (ms)
 #%% Initial read and processing
 
 # Loop over list of individuals
-rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-# rundates = ['20210727']
+# rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
+rundates = ['20210730']
 for date in rundates:
     plt.close('all')
     
@@ -510,15 +510,22 @@ for date in rundates:
     plt.style.use('default')
     
     
-    #%% Plot distribution of spike phase for each muscle 
+    #%% Plot distribution of spike phase/time for each muscle 
     
+    # Spike phase
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
     for i,m in enumerate(channelsEMG):
-        ax[i].hist(da.loc[da[m+'_st'], 'phase'], bins=100)
-    # Labels and aesthetics
+        ax[i].hist(da.loc[da[m+'_st'], 'phase'], bins=100, density=True)
+        ax[i].set_ylabel(m)
+    # Labels
     ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
     
+    # if saveplots:
+    plt.savefig(savefigdir+'spikeDistributions/'+'phasehist_'+date+figFileType,
+                dpi=dpi)
     
+    
+    # Spike time
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
     for i,m in enumerate(channelsEMG):
         ax[i].hist(da.loc[da[m+'_st'] & 
@@ -529,7 +536,13 @@ for date in rundates:
     
     # TODO: for first spike in wingbeat?
     
+
+    #%% Look at L-R timing differences for the same muscles
     
+    # Overall histograms of L-R timing differences 
+    
+    # L-R timing differences against mean output variables
+
     
     #%% Spike phase vs. stimphase
     
@@ -654,11 +667,13 @@ for date in rundates:
     
 #%% A quickplot cell
 
-# quickPlot('20210730', '023',
-#           tstart=0, tend=20,
-#           plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx'])
+quickPlot('20210730', '014',
+          tstart=0, tend=20,
+          plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx'])
 
+#%%
 
+wbmeanplot(channelsFT, da, 14)
 
 '''
 Bug fixes
