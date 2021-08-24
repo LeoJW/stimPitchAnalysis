@@ -20,10 +20,21 @@ from scipy.signal import butter, filtfilt, cheby2
 
 # Grab data from a trial. Assumes data dirs are one dir back from location of this script
 def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
-                grabOnly=[]):
-    # Move to data directory
+                grabOnly=[],
+                readFrom='local'):
+    
     startdir = os.path.dirname(os.path.realpath(__file__))
-    os.chdir(os.path.join(startdir, os.pardir + '/' + date))
+    # Local data directories
+    if readFrom=='local':
+        os.chdir(os.path.join(startdir, os.pardir + '/' + date))
+    # Dropbox data directories
+    else:
+        os.chdir(os.path.join(os.path.expanduser('~'),
+                              'Dropbox (GaTech)',
+                              'Sponberg Team',
+                              'Leo Wood',
+                              'pitchStim',
+                              date))
     # Recording type
     if doFT:
         recname = 'FT'
@@ -77,14 +88,24 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
 
 # Grab spike-sorted data, consisting of spike times and waveforms
 def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
-                  stimAmplitudeThresh=4):
-    # Jump out to spikesort dir
+                  stimAmplitudeThresh=4,
+                  readFrom='local'):
+    
     startdir = os.path.dirname(os.path.realpath(__file__))
-    os.chdir(os.path.join(startdir, os.pardir, 'spikesort'))
-    # Jump into dir for this date
-    os.chdir(date)
+    # Jump to spikesort dir that's local
+    if readFrom=='local':
+        os.chdir(os.path.join(startdir, os.pardir, 'spikesort', date))
+    # Jump to spikesort dir that's in dropbox
+    else:
+        os.chdir(os.path.join(os.path.expanduser('~'),
+                              'Dropbox (GaTech)',
+                              'Sponberg Team',
+                              'Leo Wood',
+                              'pitchStim',
+                              'spikesort',
+                              date))
     # Get file names in this dir, ignoring notes
-    filenames = [s for s in os.listdir() if s != 'note']
+    filenames = [s for s in os.listdir() if s != 'note']    
     
     # Prepare storage variables
     spikes = {}
@@ -106,6 +127,9 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
             spikes[m] = np.array([[-1000,-1000]])
             waveforms[m] = np.zeros((1,32))
             continue
+        # Determine if .mat files or .txt files were used
+        fileUsed = mfiles[0][-3:]
+        
         # Loop over all sorted files 
         # (usually 1, may be more if _up or _down variant)
         for sortfile in mfiles:
@@ -116,26 +140,48 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                 thistype = 'down'
             else:
                 thistype = 'reg'
-            # Read in file
-            mat = scipy.io.loadmat(sortfile)
-            # Loop over "channels" (actually just trials) and grab data
-            for ch in [s for s in list(mat) if '__' not in s]:
-                # grab channel/trial number 
-                chnumber = int(ch[-2:])
-                # grab spike times and put together with trial number
-                temparray = np.column_stack((mat[ch][:,1],
-                                             chnumber*np.ones(len(mat[ch][:,1]))))
-                # Remove any obvious stim artifacts (high amplitude!)
-                rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
-                temparray = np.delete(temparray, (rminds), axis=0)
-                mat[ch] = np.delete(mat[ch], (rminds), axis=0)
-                
-                # save spike times
-                spikes[m].append(temparray)
-                # Save sort type
-                spikes[m + '_sorttype'].append(thistype)
-                # save waveforms
-                waveforms[m].append(mat[ch][:,2:])
+            # Read in file (MAT FILE VERSION)
+            if fileUsed=='mat':
+                mat = scipy.io.loadmat(sortfile)
+                # Loop over "channels" (actually just trials) and grab data
+                for ch in [s for s in list(mat) if '__' not in s]:
+                    # grab channel/trial number 
+                    chnumber = int(ch[-2:])
+                    # grab spike times and put together with trial number
+                    temparray = np.column_stack((mat[ch][:,1],
+                                                 chnumber*np.ones(len(mat[ch][:,1]))))
+                    # Remove any obvious stim artifacts (high amplitude!)
+                    rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
+                    temparray = np.delete(temparray, (rminds), axis=0)
+                    mat[ch] = np.delete(mat[ch], (rminds), axis=0)
+                    
+                    # save spike times
+                    spikes[m].append(temparray)
+                    # Save sort type
+                    spikes[m + '_sorttype'].append(thistype)
+                    # save waveforms
+                    waveforms[m].append(mat[ch][:,2:])
+            
+            # Read in file (TXT FILE VERSION)
+            else:
+                mat = np.loadtxt(sortfile, skiprows=1, delimiter=',')
+                # Loop over "channels" (actually just trials) and grab data
+                for ch in np.unique(mat[:,0]):
+                    # grab rows for this channel number
+                    inds = mat[:,0]==ch
+                    # grab spike times and put together with trial number
+                    temparray = np.column_stack((mat[inds,2], mat[inds,0]))
+                    # # Remove any obvious stim artifacts (high amplitude!)
+                    # rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
+                    # temparray = np.delete(temparray, (rminds), axis=0)
+                    # mat[ch] = np.delete(mat[ch], (rminds), axis=0)
+                    
+                    # save spike times
+                    spikes[m].append(temparray)
+                    # Save sort type
+                    spikes[m + '_sorttype'].append(thistype)
+                    # save waveforms
+                    waveforms[m].append(mat[inds,3:])
                 
         # Do a last vstack of all the nparrays in a list
         spikes[m] = np.vstack(spikes[m])
@@ -145,10 +191,18 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
     
 
 # grab which trials for this moth are good and have delay
-def whichTrials(date, purpose='good'):
+def whichTrials(date, purpose='good', readFrom='local'):
     # Move to data directory
     startdir = os.path.dirname(os.path.realpath(__file__))
-    os.chdir(os.path.join(startdir, os.pardir + '/' + date))
+    if readFrom=='local':
+        os.chdir(os.path.join(startdir, os.pardir + '/' + date))
+    else:
+        os.chdir(os.path.join(os.path.expanduser('~'),
+                              'Dropbox (GaTech)',
+                              'Sponberg Team',
+                              'Leo Wood',
+                              'pitchStim',
+                              date))
     # Check if programGuide exists
     contents = os.listdir()
     guide = [s for s in contents if 'program' in s]
@@ -222,6 +276,16 @@ def transformFTdata(rawData, biasOffset):
         [-5.320003676, -0.156640061, 2.796170871, 4.206523866, 2.780562472, -4.252850011],
         [-0.056240509, 3.091367987, 0.122101875, 2.941467741, 0.005876647, 3.094672928]
         ])
+    # Translation to Center Of Mass (COM)
+    # trans_m = np.array([
+    #     [1,	0,	0,	0,	0,	0],
+    #     [0,	1,	0,	0,	0,	0],
+    #     [0,	0,	1,	0,	0,	0],
+    #     [0,	55.5,	5.4,	1,	0,	0],
+    #     [-55.5,	0,	0,	0,	1,	0],
+    #     [-5.4,	0,	0,	0,	0,	1]
+    #     ])
+    # Translation to base of tether
     trans_m = np.array([
         [1, 0, 0, 0, 0, 0],
         [0, 1, 0, 0, 0, 0],
@@ -252,8 +316,8 @@ def butterfilt(signal, cutoff, fs, order=4, bandtype='low'):
     return y
 def cheby2filt(signal, cutoff, fs, rs=40, order=4, bandtype='low'):
     nyq = 0.5 * fs
-    b, a = cheby2(order, rs, cutoff/nyq, btype=bandtype, analog=False)
-    y = filtfilt(b, a, signal)
+    sos = cheby2(order, rs, cutoff/nyq, btype=bandtype, analog=False, output='sos')
+    y = scipy.signal.sosfiltfilt(sos, signal)
     return y
 
 
