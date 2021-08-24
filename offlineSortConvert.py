@@ -24,17 +24,19 @@ if not any('spikesort' in s for s in os.listdir()):
     os.mkdir('spikesort')
 # Save where spikesort dir is
 spikesortdir = os.path.join(os.getcwd(), 'spikesort')
-# Grab all directories with "202107" in name
-outerdir = os.getcwd()
-folders = os.listdir()
-trialdirs = [s for s in folders if '202107' in s]
+# Get data directory in dropbox sync'd folder, move 
+datadir = os.path.join(os.path.expanduser('~'), 'Dropbox (GaTech)', 'Sponberg Team', 'Leo Wood', 'pitchStim')
+os.chdir(datadir)
+
+# Grab all directories with a specific month in name
+trialdirs = [s for s in os.listdir() if '202108' in s]
 
 
 
 # Loop over trial directories
 for dircount,d in enumerate(trialdirs):
     # Jump to this trial
-    os.chdir(os.path.join(outerdir, d))
+    os.chdir(os.path.join(datadir, d))
     
     # Print to let user know which dir it's on
     print('\n')
