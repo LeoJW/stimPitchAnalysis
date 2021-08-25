@@ -7,6 +7,7 @@ Created on Mon May 24 11:13:29 2021
 """
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.gridspec as gridspec
@@ -14,7 +15,7 @@ import matplotlib.gridspec as gridspec
 import os
 import scipy.io
 import csv
-from scipy.signal import butter, filtfilt, cheby2
+from scipy.signal import butter, cheby2, filtfilt, sosfiltfilt
 
 
 
@@ -277,23 +278,23 @@ def transformFTdata(rawData, biasOffset):
         [-0.056240509, 3.091367987, 0.122101875, 2.941467741, 0.005876647, 3.094672928]
         ])
     # Translation to Center Of Mass (COM)
-    # trans_m = np.array([
-    #     [1,	0,	0,	0,	0,	0],
-    #     [0,	1,	0,	0,	0,	0],
-    #     [0,	0,	1,	0,	0,	0],
-    #     [0,	55.5,	5.4,	1,	0,	0],
-    #     [-55.5,	0,	0,	0,	1,	0],
-    #     [-5.4,	0,	0,	0,	0,	1]
-    #     ])
-    # Translation to base of tether
     trans_m = np.array([
-        [1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0],
-        [0,19, 0, 1, 0, 0],
-        [-19,0,0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1]
+        [1,	0,	0,	0,	0,	0],
+        [0,	1,	0,	0,	0,	0],
+        [0,	0,	1,	0,	0,	0],
+        [0,	55.5,	5.4,	1,	0,	0],
+        [-55.5,	0,	0,	0,	1,	0],
+        [-5.4,	0,	0,	0,	0,	1]
         ])
+    # # Translation to base of tether
+    # trans_m = np.array([
+    #     [1, 0, 0, 0, 0, 0],
+    #     [0, 1, 0, 0, 0, 0],
+    #     [0, 0, 1, 0, 0, 0],
+    #     [0,19, 0, 1, 0, 0],
+    #     [-19,0,0, 0, 1, 0],
+    #     [0, 0, 0, 0, 0, 1]
+    #     ])
     
     # Calibrate
     rawData = np.matmul(cal_m, rawData)
@@ -317,19 +318,16 @@ def butterfilt(signal, cutoff, fs, order=4, bandtype='low'):
 def cheby2filt(signal, cutoff, fs, rs=40, order=4, bandtype='low'):
     nyq = 0.5 * fs
     sos = cheby2(order, rs, cutoff/nyq, btype=bandtype, analog=False, output='sos')
-    y = scipy.signal.sosfiltfilt(sos, signal)
+    y = sosfiltfilt(sos, signal)
     return y
 
 
-
+    
 
 '''
 Plotting utility for lines with character bars on end. Taken from
 https://stackoverflow.com/questions/52743119/line-end-styles-in-matplotlib
 '''
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-
 def add_interval(ax, xdata, ydata, caps="  ",
                  color='black', capsize=24):
     line = ax.add_line(mpl.lines.Line2D(xdata, ydata, color=color, solid_capstyle='butt'))
