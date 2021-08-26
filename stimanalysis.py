@@ -26,12 +26,10 @@ import time as systime
 '''
 Wingbeat removing conundrum.
 
-Can either:
-    - Fill "bad" wingbeats with empty values
-    - Remove "bad" wingbeats altogether, but keep indices
-    
-When indexing, if you use .loc instead of .iloc should be able to still index by unchanged wingbeats
+Remove bad wingbeats early on in load/processing
+Save a long bool vector (length of all data with nothing removed) of whether good or bad wingbeat
 
+Run spike sort import the same, but them trim spikeBoolVec with that long vector
 
 Note: iloc does not include last element in range, while loc does
 '''
@@ -103,8 +101,7 @@ dtmaxthresh = 100  # (ms)
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
 # rundates = ['20210816','20210816_1','20210817_1','20210818_1']
-# rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-rundates = ['20210816']
+rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
 for date in rundates:
     plt.close('all')
 
@@ -124,9 +121,10 @@ for date in rundates:
     # Create variables for loop
     pulsecount = 1
     lastwb = 0
-    lastwbind = 0
+    lastind = 0
     wbinds = []  # global first,last index pairs for each wingbeat
     stiminds = [[] for x in range(goodTrials[-1]+1)]
+    goodwb = []
     '''
     ^Note the +1: For trials I'm sticking to a 1-indexing convention.
     This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
@@ -175,20 +173,23 @@ for date in rundates:
                 (wbdiff > maxwblen)
         for ii in np.where(badwb)[0]:
             keep[wb2col[ii,0]:wb2col[ii,1]] = False
+        # Put into global (for this trial) list
+        goodwb.append(keep)
         
+        
+        # Remove bad wingbeats from dataframe
+        
+        # Remove bad wingbeats from wb2col
         
         
         # Save wingbeat indices
-        wbinds.append(wb2col[~badwb,:] + lastwbind)
-        # Update length of wingbeat inds
-        lastwbind += len(emg['Time'])
+        wbinds.append(wb2col[~badwb,:] + lastind)
         
         # Make long-form wingbeat column in dataframe 
         dtemp['wb'] = 0
         dtemp.loc[wb, 'wb'] = 1
         dtemp['wb'] = np.cumsum(dtemp['wb']) + lastwb
         lastwb = dtemp['wb'].iloc[-1] + 1
-        
 
         # Make trial column
         dtemp['trial'] = i
@@ -206,7 +207,7 @@ for date in rundates:
         # Get stim indices
         si = np.where(np.logical_and(dtemp['stim'] > 3,
                                      np.roll(dtemp['stim'] < 3, 1)))[0]
-        stiminds[i] = si
+        stiminds[i] = si + lastind
 
         # Waste memory and create several different columns
         dtemp['wbstate'] = 'regular'
@@ -256,8 +257,11 @@ for date in rundates:
         for name in channelsEMG:
             dtemp.loc[dtemp['stim'] > stimthresh, name] = np.nan
 
-        # Remove wingbeats longer than a certain threshold
-        # dtemp = dtemp[dtemp.groupby('wb')['reltime'].transform('count').lt(int(fsamp*wblengththresh))]
+
+        # Increment indices to match when this trial is added to all trials
+        dtemp.index = pd.RangeIndex(start=lastind, stop=lastind+len(emg['Time']), step=1)
+        # Update length of this trial 
+        lastind += len(emg['Time'])
 
         # Add to full dataframe
         if i == goodTrials[0]:
@@ -266,12 +270,10 @@ for date in rundates:
             da = da.append(dtemp, ignore_index=True)
             # Note: previously used pd.concat(), but somehow append is slightly faster
 
-    # Save to da (dataframe_all)
-    # da = df.copy()
-
     #--- Calculate useful quantities/vectors
     # Wingbeat vectors
     wbinds = np.vstack(wbinds)
+    goodwb = np.vstack(goodwb)
     wb = da['wb'].to_numpy()
     # length of each wingbeat (useful)
     wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
@@ -281,9 +283,6 @@ for date in rundates:
     # TODO: For handling multiple consecutive stims in DVM trials,
     # look at difference in stim times, assign those above threshold as different pulses
     
-    
-    # - make sure to update wbinds as rows from dataframe are removed
-    # - check that nothing relies on specific trial length
 
     #%% Pull in spike times from spike sorting
     print('Pulling and analyzing spike sorting...')
@@ -322,7 +321,7 @@ for date in rundates:
             firstrow = np.argmax(ida)
 
             # Turn spike times into indices
-            spikeinds = np.rint(spikes[m][inds, 0]*fsamp).astype(int) ###########################
+            spikeinds = np.rint(spikes[m][inds, 0]*fsamp).astype(int)
             # Save on boolean vector
             spikeBoolVec[spikeinds + firstrow] = True
 
@@ -356,9 +355,9 @@ for date in rundates:
                 plt.plot(waveforms[m][i, :])
             plt.title(m)
 
-        # Actually remove spikes that are too close to stim
+        # Remove spikes too close to stim from primary spike data objects as well
         spikes[m] = np.delete(spikes[m], (closespikes[m]), axis=0)
-        waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0)
+        waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0) 
 
         # Update dataframe column with spikeBoolVec
         da[m+'_st'] = spikeBoolVec
