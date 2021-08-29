@@ -346,17 +346,18 @@ def add_interval(ax, xdata, ydata, caps="  ",
 def quickPlot(date, trial, tstart=5, tend=10,
               plotnames=['LDVM', 'LDLM','RDLM','RDVM'],
               hpfCutoff = 70,
-              lpfCutoff = 500):
+              lpfCutoff = 500,
+              readFrom='local'):
     # Dumb hard-coded info
     channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
     # Read empty data for FT
-    biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True)
+    biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True, readFrom=readFrom)
     bias = np.zeros((6,1))
     for i in range(6):
         bias[i] = np.mean(biasdata[colnames[i+1]])
     # Read actual data
-    emg, emgnames, fsamp = readMatFile(date, trial, doFT=False)
-    ftd, ftdnames, _     = readMatFile(date, trial, doFT=True)
+    emg, emgnames, fsamp = readMatFile(date, trial, doFT=False, readFrom=readFrom)
+    ftd, ftdnames, _     = readMatFile(date, trial, doFT=True, readFrom=readFrom)
     # Filter data
     for name in channelsEMG: # Filter EMG
         emg[name] = butterfilt(emg[name], hpfCutoff, fsamp, order=4, bandtype='high')
@@ -374,7 +375,6 @@ def quickPlot(date, trial, tstart=5, tend=10,
     plt.figure()
     for i,n in enumerate(plotnames):
         # Rescale y to 0-1
-        # TODO: Rescaling not working! need to remove stim artifact
         yvec = full[n][inds]
         yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
         plt.plot(full['Time'][inds], yvec+i)
