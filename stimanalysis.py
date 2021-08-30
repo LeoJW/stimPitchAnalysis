@@ -100,8 +100,8 @@ dtmaxthresh = 100  # (ms)
 
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-# rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-rundates = ['20210817_1','20210818_1']
+rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
+# rundates = ['20210817_1']
 for date in rundates:
     plt.close('all')
 
@@ -178,6 +178,7 @@ for date in rundates:
         goodwb.append(keep)
         # Save wingbeat indices
         wbinds.append(wb2col[~badwb,:] + lastind)
+        # wbinds.append(wb2col + lastind)
         
         # Make long-form wingbeat column in dataframe 
         dtemp['wb'] = 0
@@ -414,14 +415,12 @@ for date in rundates:
         figb.savefig(savefigdir + 'AP_comparison_reject_' + date + figFileType,
                       dpi=dpi)
                         
-
     #%% Remove bad wingbeats!
     da = da[goodwb]
     
     # Recreate a few vectors
     wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
     wb = da['wb'].to_numpy()
-    
     
     # #%% Save data to dropbox for Joy
     # print('Saving preprocessed data...')
@@ -462,60 +461,195 @@ for date in rundates:
     # Labels
     ax[len(channelsEMG)-1].set_xlabel('Spike Time')
 
-
     #%% Grab first spike per wingbeat
     difthresh = 30 # 3ms
-    
+    print('Grabbing first spike per wingbeat...')
     tic = systime.perf_counter()
     
     # Determine which muscles were spike sorted
     hasSort = [m for m in channelsEMG if np.shape(spikes[m])[0] > 1]
-    
+    # preallocate first_spike columns
+    for m in channelsEMG:
+        da[m+'_fs'] = np.nan
     # Loop over muscles
     for i,m in enumerate(hasSort):
+        firstall = []
         # Loop over trials
-        for name, group in da.groupby('trial'):
+        for j in np.unique(da.trial):
+            # get indices 
+            dt = da.loc[da.trial==j,]
             # get index of first spike in all wingbeats
-            first = group.groupby('wb')[m+'_st'].idxmax() - \
-                group.groupby('wb')[m+'_st'].idxmin()
+            first = dt.groupby('wb')[m+'_st'].idxmax() - \
+                dt.groupby('wb')[m+'_st'].idxmin()
             # Note which wingbeats to ignore based on state (stim, prestim, etc)
-            ignorewb = group.groupby('wb')['wbstate'].nth(0)!='regular'
+            ignorewb = dt.groupby('wb')['wbstate'].nth(0)!='regular'
             # note which wingbeats have diff outside threshold
-            difGood = np.insert(np.diff(first) < difthresh, 0, True)
+            difBad = np.insert(np.diff(first) > difthresh, 0, True)
             # Remove zeros, those with diff outside threshold (that aren't stim!)
-            first = first[(first!=0) & difGood & ~ignorewb]
-            # Set name of pd.series
-            first.name = m+'_fs'
-            # put back in main dataframe
-            da = da.join(first, on='wb')
-            
+            first[(first==0) | difBad | ~ignorewb] = np.nan
+            firstall.append(first.to_numpy())
+        firstall = np.hstack(firstall)
+        da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
     print(systime.perf_counter()-tic)
-                
     
-    # Use diff to find first spikes that weren't picked up, ignore those cycles
+    #%% histograms of phase/time of first spike
     
-    # histograms of phase/time of first spike
+    # Spike phase pre-, stim, post-
+    fig, ax = plt.subplots(len(hasSort), 3,
+                            sharex=True, sharey=True,
+                            figsize=(6, 9),
+                            gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    # make plot
+    for i, m in enumerate(hasSort):
+        for j, s in enumerate(states):
+            df = da.loc[(da['wbstate'] == s), ].groupby('wb').nth(0)
+            ax[i, j].plot(df['stimphase'], df[m+'_fs']/10, '.', markersize=1)
+    # labels, aesthetics
+    for i, m in enumerate(hasSort):
+        ax[i, 0].set_ylabel(m)
+    for j, s in enumerate(states):
+        ax[len(hasSort)-1, j].set_xlabel(s)
+    # save
+    if saveplots:
+        plt.savefig(savefigdir + 'first_stimphase_spiketimes_' + date + figFileType,
+                    dpi=dpi)
+    
     
     # phase/time of first spike prestimpost
+    
 
     # Overall histograms of L-R timing differences
 
-    # L-R timing differences against mean output variables
+    #%% L-R timing differences
+    # Make aggregate control dictionary
+    aggdict = {}
+    for i in list(da):
+        aggdict[i] = 'first'
+    for i in channelsFT:  # loop over all numeric columns
+        aggdict[i] = 'mean'
+    # Create dataframe
+    df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
+
+    mincol = np.min(df['stimphase'])
+    maxcol = np.max(df['stimphase'])
     
-#%%
-plt.figure()
-m='LDVM'
-difthresh = 30 # 3ms
-first = df.groupby('wb')[m+'_st'].idxmax() - \
-    df.groupby('wb')[m+'_st'].idxmin()
-plt.plot(first,'.')
-# Note which wingbeats to ignore based on state (stim, prestim, etc)
-ignorewb = df.groupby('wb')['wbstate'].nth(0)!='regular'
-# note which wingbeats have diff outside threshold
-difGood = np.insert(np.diff(first) < difthresh, 0, True)
-# Remove zeros, those with diff outside threshold (that aren't stim!)
-first = first[(first!=0) & difGood & ~ignorewb]
-plt.plot(first,'.')
+    # Create plots
+    fig, ax = plt.subplots(2,1, figsize=(4.37,5.7))
+    figDLM = plt.figure()
+    axDLM = plt.gca()
+    
+    wbvec = []
+    leftdata = []
+    rightdata = []
+    # Loop over pulses
+    for i,p in enumerate(np.unique(df.pulse)):
+        dt = df.loc[df.pulse==p,]
+        # Shift wingbeats to line up at stim
+        wbvec.append(dt['wb'].to_numpy() - dt.loc[dt['wbstate']=='stim','wb'].to_numpy())
+        # Grab time differences
+        leftdata.append((dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10)
+        rightdata.append((dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10)
+        # Color by stimulus phase
+        colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
+        ax[0].plot(wbvec[i], leftdata[i], '-', marker='.',
+                   color=viridis(colphase), alpha=0.7)
+        ax[1].plot(wbvec[i], rightdata[i], '-', marker='.',
+                   color=viridis(colphase), alpha=0.7)
+        
+        axDLM.plot(wbvec[i], (dt['RDLM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10,
+                   color=viridis(colphase), alpha=0.7)
+    # Colorbar
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    tickrange = np.linspace(mincol, maxcol, 10)
+    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                        ticks=(tickrange-mincol)/(maxcol-mincol),
+                        cax=cbar_ax)
+    cbar.ax.set_yticklabels([str(round(x,3)) for x in tickrange], fontsize=7)
+    cbar.ax.set_title('Phase of stimulus')
+    # Labelling, aesthetics
+    ax[0].set_ylabel('Left tDVM-tDLM')
+    ax[1].set_ylabel('Right tDVM-tDLM')
+    ax[0].set_ylim(bottom=0)
+    ax[1].set_ylim(bottom=0)
+    
+    axDLM.set_ylabel('RDLM-LDLM')
+    
+    
+    #%% L-R timing differences against mean output variables
+    plotvar = 'mx'
+    # Make aggregate control dictionary
+    aggdict = {}
+    for i in list(da):
+        aggdict[i] = 'first'
+    for i in channelsFT:  # loop over all numeric columns
+        aggdict[i] = 'mean'
+    # Create dataframe
+    df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
+    mincol = np.min(df['stimphase'])
+    maxcol = np.max(df['stimphase'])
+    nwb = wbBefore+wbAfter+1
+    
+    # Create plots
+    fig, ax = plt.subplots(2, wbBefore+wbAfter+1,
+                           sharex=True, sharey=True,
+                           figsize=(13,3),
+                           gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    figd, axd = plt.subplots(2, wbBefore+wbAfter,
+                             sharex=True, sharey=True,
+                             figsize=(13,3),
+                             gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    # Loop over pulses
+    for i,p in enumerate(np.unique(df.pulse)):
+        dt = df.loc[df.pulse==p,]
+        val = np.full(nwb, np.nan)
+        tdifL = np.full(nwb, np.nan)
+        tdifR = np.full(nwb, np.nan)
+        # grab wingbeats
+        thiswb = dt['wb'].to_numpy() - dt['wb'].iloc[0]
+        # Grab time differences
+        tdifL[thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
+        tdifR[thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
+        val[thiswb] = dt[plotvar].to_numpy()
+        # Color by stimulus phase
+        colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
+        # Loop over wingbeats, plot value for each wb
+        for j in range(nwb):
+            ax[0,j].plot(tdifL[j], val[j], '.', color='black')
+            ax[1,j].plot(tdifR[j], val[j], '.', color='black')
+        # Plot differences
+        difL = np.diff(tdifL)
+        difR = np.diff(tdifR)
+        difval = np.diff(val)
+        for j in range(nwb-1):
+            axd[0,j].plot(difL[j], difval[j], '.', color='black')
+            axd[1,j].plot(difR[j], difval[j], '.', color='black')
+        
+    # Labelling, aesthetics
+    ax[0,0].set_xlim(left=0)
+    fig.subplots_adjust(bottom=0.2)
+    ax[1,wbBefore].set_xlabel(r'$(t_{DVM}-t_{DLM})$')
+    for i in np.arange(-wbBefore,wbAfter+1):
+        ax[0,i+wbBefore].set_title(i)
+    ax[0,0].set_ylabel('Mean '+plotvar+' Left')
+    ax[1,0].set_ylabel('Mean '+plotvar+' Right')
+    
+    for i in np.arange(-wbBefore,wbAfter):
+        axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
+    figd.subplots_adjust(bottom=0.2)
+    axd[1,wbBefore].set_xlabel(r'$\Delta (t_{DVM}-t_{DLM})$')
+    axd[0,0].set_ylabel(r'$\Delta$'+plotvar+' Left')
+    axd[1,0].set_ylabel(r'$\Delta$'+plotvar+' Right')
+    
+    if date=='20210817_1':
+        axd[0,0].set_xlim(left=-10)
+    
+    if saveplots:
+        fig.savefig(savefigdir+'dt_vs_mean_'+plotvar+'_'+date+figFileType,
+                    dpi=dpi)
+        figd.savefig(savefigdir+'delta_dt_vs_delta_mean_'+plotvar+'_'+date+figFileType,
+                     dpi=dpi)
+
 
     #%% Spike phase vs. stimphase
 
@@ -542,7 +676,6 @@ plt.plot(first,'.')
         plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
                     dpi=dpi)
 
-    #%% show variance in induced AP by superimposing
 
     #%% Wingbeat mean torques vs. stimulus time/phase
 
@@ -629,42 +762,11 @@ plt.plot(first,'.')
     if saveplots:
         plt.savefig(savefigdir+'diff_wbmean_'+aggdict['RDLM']+'_'+date+figFileType,
                     dpi=dpi)
-
-
-# for name, group in df.groupby('pulse'):
-#     # change phase to start at zero, go to wbBefore+wbAfter
-#     ph = group.phase.to_numpy()
-#     for i in np.where(ph==1)[0]:
-#         ph[i+1:] += 1
-#     # Get color for this pulse
-#     colphase = (group.stimphase.iloc[0] - mincol)/(maxcol-mincol)
-#     plt.plot(ph, group['mx'], 
-#              alpha=0.5,
-#              lw=0.5,
-#              color=viridis(colphase))
     
 
 #%% Grab single trial, look at a few things over time
 trial = 13
-
-
-# #--- Number of spikes per wingbeat
-# fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-# # Make aggregate control dictionary
-# aggdict = {}
-# for i in list(df):
-#     aggdict[i] = 'first'
-# for m in channelsEMG:
-#     aggdict[m+'_st'] = 'sum'
-# df = da.loc[da.trial==trial, ].groupby(['wb']).agg(aggdict)
-# for i,m in enumerate(channelsEMG):
-#     ax[i].plot(df['wb'], df[m+'_st'], marker='.')
-#     ax[i].plot(df.loc[df['wbstate']=='stim', 'wb'],
-#                df.loc[df['wbstate']=='stim', m+'_st'],
-#                'r.')
-    
-    
-#--- Spike phase/time over time
+# Spike phase/time over time
 fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
 df = da.loc[da.trial==trial, ]
 for i,m in enumerate(channelsEMG):
@@ -698,8 +800,8 @@ for i,m in enumerate(channelsEMG):
 # Plot differences     
 fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
 for i,m in enumerate(channelsEMG):
-    ax[i].axhline(y=2*np.std(np.diff(first[i])), color='black')
-    ax[i].axhline(y=-2*np.std(np.diff(first[i])), color='black')
+    ax[i].axhline(y=0.003, color='black')
+    ax[i].axhline(y=-0.003, color='black')
     ax[i].plot(fwb[i][1:], np.diff(first[i]), '.')
     
 # label
@@ -708,7 +810,7 @@ for i,m in enumerate(channelsEMG):
 
 #%% A quickplot cell
 
-trial = 13
+trial = 7
 
 quickPlot(date, str(trial).zfill(3),
           tstart=0, tend=20,
