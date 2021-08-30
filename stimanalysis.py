@@ -106,7 +106,7 @@ for date in rundates:
     plt.close('all')
 
     print(date)
-    print('Reading in main data...')
+    print('   Reading in main data...')
     tic = systime.perf_counter()
 
     #- Load data
@@ -269,14 +269,14 @@ for date in rundates:
     wbinds = np.vstack(wbinds)
     goodwb = np.hstack(goodwb)
 
-    print('    done in ' + str(systime.perf_counter()-tic))
+    print('       done in ' + str(systime.perf_counter()-tic))
     
     # TODO: For handling multiple consecutive stims in DVM trials,
     # look at difference in stim times, assign those above threshold as different pulses
     
 
     #%% Pull in spike times from spike sorting
-    print('Pulling and analyzing spike sorting...')
+    print('   Pulling and analyzing spike sorting...')
     tic = systime.perf_counter()
 
     # Load spike times for this date
@@ -359,7 +359,7 @@ for date in rundates:
     # if date == '20210801':
     #     df = df.loc[~df['trial'].isin([5,6,7,8]), ]
 
-    print('    done in ' + str(systime.perf_counter()-tic))
+    print('       done in ' + str(systime.perf_counter()-tic))
     
     #%% Keep only pulses where there is a good induced AP in both stim'd muscles
     windowLen = 50
@@ -437,33 +437,10 @@ for date in rundates:
     # #                  {name: col.values for name, col in da.items()})
     # da.to_csv(savedir+date+'.csv')
     # print(systime.perf_counter()-tic)
-
-
-    #%% Plot distribution of spike phase/time for each muscle
-
-    # Spike phase
-    fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-    for i, m in enumerate(channelsEMG):
-        ax[i].hist(da.loc[da[m+'_st'], 'phase'], bins=100, density=True)
-        ax[i].set_ylabel(m)
-    # Labels
-    ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
-
-    # if saveplots:
-    plt.savefig(savefigdir+'spikeDistributions/'+'phasehist_'+date+figFileType,
-                dpi=dpi)
-
-    # Spike time
-    fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-    for i, m in enumerate(channelsEMG):
-        ax[i].hist(da.loc[da[m+'_st']
-                          & (wblen < 1000), 'reltime'], bins=100)
-    # Labels
-    ax[len(channelsEMG)-1].set_xlabel('Spike Time')
-
+    
     #%% Grab first spike per wingbeat
     difthresh = 30 # 3ms
-    print('Grabbing first spike per wingbeat...')
+    print('   Grabbing first spike per wingbeat...')
     tic = systime.perf_counter()
     
     # Determine which muscles were spike sorted
@@ -490,9 +467,56 @@ for date in rundates:
             firstall.append(first.to_numpy())
         firstall = np.hstack(firstall)
         da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
-    print(systime.perf_counter()-tic)
-    
-    #%% histograms of phase/time of first spike
+    print('       done in ' + str(systime.perf_counter()-tic))
+
+
+    #%% Plot distribution of spike phase/time for each muscle
+
+    # Spike phase
+    fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
+    for i, m in enumerate(channelsEMG):
+        ax[i].hist(da.loc[da[m+'_st'], 'phase'], bins=100, density=True)
+        ax[i].set_ylabel(m)
+    # Labels
+    ax[len(channelsEMG)-1].set_xlabel('Spike Phase')
+
+    # if saveplots:
+    plt.savefig(savefigdir+'spikeDistributions/'+'phasehist_'+date+figFileType,
+                dpi=dpi)
+
+    # Spike time
+    fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
+    for i, m in enumerate(channelsEMG):
+        ax[i].hist(da.loc[da[m+'_st']
+                          & (wblen < 1000), 'reltime'], bins=100)
+    # Labels
+    ax[len(channelsEMG)-1].set_xlabel('Spike Time')
+
+    #%% Spike phase vs. stimphase
+
+    # Spike phase pre-, stim, post-
+    fig, ax = plt.subplots(len(channelsEMG), 3,
+                            sharex=True, sharey=True,
+                            figsize=(6, 9),
+                            gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    # make plot
+    for i, m in enumerate(channelsEMG):
+        for j, s in enumerate(states):
+            df = da.loc[(da['wbstate'] == s)
+                        & da[m+'_st'], ]
+            ax[i, j].plot(df['stimphase'], df['phase'], '.', markersize=1)
+    # labels, aesthetics
+    for i, m in enumerate(channelsEMG):
+        ax[i, 0].set_ylabel(m)
+    for j, s in enumerate(states):
+        ax[len(channelsEMG)-1, j].set_xlabel(s)
+    ax[0, 0].set_xlim((0, 1))
+    ax[0, 0].set_ylim((0, 1))
+    # save
+    if saveplots:
+        plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
+                    dpi=dpi)
+    #%% First spike phase vs. stimphase
     
     # Spike phase pre-, stim, post-
     fig, ax = plt.subplots(len(hasSort), 3,
@@ -514,10 +538,6 @@ for date in rundates:
         plt.savefig(savefigdir + 'first_stimphase_spiketimes_' + date + figFileType,
                     dpi=dpi)
     
-    
-    # phase/time of first spike prestimpost
-    
-
     # Overall histograms of L-R timing differences
 
     #%% L-R timing differences
@@ -583,7 +603,7 @@ for date in rundates:
     for i in list(da):
         aggdict[i] = 'first'
     for i in channelsFT:  # loop over all numeric columns
-        aggdict[i] = 'mean'
+        aggdict[i] = 'std'
     # Create dataframe
     df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
     mincol = np.min(df['stimphase'])
@@ -631,8 +651,8 @@ for date in rundates:
     ax[1,wbBefore].set_xlabel(r'$(t_{DVM}-t_{DLM})$')
     for i in np.arange(-wbBefore,wbAfter+1):
         ax[0,i+wbBefore].set_title(i)
-    ax[0,0].set_ylabel('Mean '+plotvar+' Left')
-    ax[1,0].set_ylabel('Mean '+plotvar+' Right')
+    ax[0,0].set_ylabel(aggdict['mx']+' '+plotvar+' Left')
+    ax[1,0].set_ylabel(aggdict['mx']+' '+plotvar+' Right')
     
     for i in np.arange(-wbBefore,wbAfter):
         axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
@@ -645,36 +665,11 @@ for date in rundates:
         axd[0,0].set_xlim(left=-10)
     
     if saveplots:
-        fig.savefig(savefigdir+'dt_vs_mean_'+plotvar+'_'+date+figFileType,
+        fig.savefig(savefigdir+'dt_vs_'+aggdict['mx']+'_'+plotvar+'_'+date+figFileType,
                     dpi=dpi)
-        figd.savefig(savefigdir+'delta_dt_vs_delta_mean_'+plotvar+'_'+date+figFileType,
+        figd.savefig(savefigdir+'delta_dt_vs_delta_'+aggdict['mx']+'_'+plotvar+'_'+date+figFileType,
                      dpi=dpi)
 
-
-    #%% Spike phase vs. stimphase
-
-    # Spike phase pre-, stim, post-
-    fig, ax = plt.subplots(len(channelsEMG), 3,
-                            sharex=True, sharey=True,
-                            figsize=(6, 9),
-                            gridspec_kw={'wspace': 0, 'hspace': 0.1})
-    # make plot
-    for i, m in enumerate(channelsEMG):
-        for j, s in enumerate(states):
-            df = da.loc[(da['wbstate'] == s)
-                        & da[m+'_st'], ]
-            ax[i, j].plot(df['stimphase'], df['phase'], '.', markersize=1)
-    # labels, aesthetics
-    for i, m in enumerate(channelsEMG):
-        ax[i, 0].set_ylabel(m)
-    for j, s in enumerate(states):
-        ax[len(channelsEMG)-1, j].set_xlabel(s)
-    ax[0, 0].set_xlim((0, 1))
-    ax[0, 0].set_ylim((0, 1))
-    # save
-    if saveplots:
-        plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
-                    dpi=dpi)
 
 
     #%% Wingbeat mean torques vs. stimulus time/phase
