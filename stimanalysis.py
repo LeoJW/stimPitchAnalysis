@@ -14,25 +14,15 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.gridspec as gridspec
 import pandas as pd
-# import seaborn as sns
 from scipy.signal import hilbert
 from scipy.stats import binned_statistic
+from sklearn.linear_model import LinearRegression
 import random
 from pyfuncs import *
 
 import time as systime
 
 
-'''
-Wingbeat removing conundrum.
-
-Remove bad wingbeats early on in load/processing
-Save a long bool vector (length of all data with nothing removed) of whether good or bad wingbeat
-
-Run spike sort import the same, but them trim spikeBoolVec with that long vector
-
-Note: iloc does not include last element in range, while loc does
-'''
 
 #%% Controls and Constants
 
@@ -100,8 +90,9 @@ dtmaxthresh = 100  # (ms)
 
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
-rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-# rundates = ['20210817_1']
+# rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
+# rundates = ['20210817_1','20210818_1']
+rundates = ['20210803_1','20210816','20210816_1']
 for date in rundates:
     plt.close('all')
 
@@ -539,6 +530,22 @@ for date in rundates:
                     dpi=dpi)
     
     # Overall histograms of L-R timing differences
+    
+    #%% Induced AP time lateral comparison
+    aggdict = {}
+    for i in list(da):
+        aggdict[i] = 'first'
+    df = da.loc[(da.wbstate=='stim') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
+    
+    plt.figure()
+    plt.axline((0,0),(1,1), color='black')
+    plt.plot(df.LDLM_fs/10, df.RDLM_fs/10, '.')
+    plt.xlabel('LDLM time')
+    plt.ylabel('RDLM time')
+    plt.title(date)
+    
+    if saveplots:
+        plt.savefig(savefigdir+'inducedAP_comparison_'+date+figFileType, dpi=dpi)
 
     #%% L-R timing differences
     # Make aggregate control dictionary
@@ -595,15 +602,24 @@ for date in rundates:
     
     axDLM.set_ylabel('RDLM-LDLM')
     
+    if saveplots:
+        fig.savefig(savefigdir+'wb_vs_deltat_'+date+figFileType, dpi=dpi)
+    
     
     #%% L-R timing differences against mean output variables
     plotvar = 'mx'
+    
+    # Summary stat to run
+    summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
+    # Name to refer to it by
+    summaryStatName = 'pkpk'
+
     # Make aggregate control dictionary
     aggdict = {}
     for i in list(da):
         aggdict[i] = 'first'
-    for i in channelsFT:  # loop over all numeric columns
-        aggdict[i] = 'std'
+    for i in channelsFT:
+        aggdict[i] = summaryfunc
     # Create dataframe
     df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
     mincol = np.min(df['stimphase'])
@@ -619,31 +635,36 @@ for date in rundates:
                              sharex=True, sharey=True,
                              figsize=(13,3),
                              gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    # Preallocate
+    npulse = len(np.unique(df.pulse))
+    tdl = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+    tdr = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+    val = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+    difL = np.full((npulse, wbBefore+wbAfter), np.nan)
+    difR = np.full((npulse, wbBefore+wbAfter), np.nan)
+    difval = np.full((npulse, wbBefore+wbAfter), np.nan)
     # Loop over pulses
     for i,p in enumerate(np.unique(df.pulse)):
         dt = df.loc[df.pulse==p,]
-        val = np.full(nwb, np.nan)
-        tdifL = np.full(nwb, np.nan)
-        tdifR = np.full(nwb, np.nan)
         # grab wingbeats
         thiswb = dt['wb'].to_numpy() - dt['wb'].iloc[0]
         # Grab time differences
-        tdifL[thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
-        tdifR[thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
-        val[thiswb] = dt[plotvar].to_numpy()
+        tdl[i,thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
+        tdr[i,thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
+        val[i,thiswb] = dt[plotvar].to_numpy()
         # Color by stimulus phase
         colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
         # Loop over wingbeats, plot value for each wb
         for j in range(nwb):
-            ax[0,j].plot(tdifL[j], val[j], '.', color='black')
-            ax[1,j].plot(tdifR[j], val[j], '.', color='black')
+            ax[0,j].plot(tdl[i,j], val[i,j], '.', color='black')
+            ax[1,j].plot(tdr[i,j], val[i,j], '.', color='black')
         # Plot differences
-        difL = np.diff(tdifL)
-        difR = np.diff(tdifR)
-        difval = np.diff(val)
+        difL[i,:] = np.diff(tdl[i,:])
+        difR[i,:] = np.diff(tdr[i,:])
+        difval[i,:] = np.diff(val[i,:])
         for j in range(nwb-1):
-            axd[0,j].plot(difL[j], difval[j], '.', color='black')
-            axd[1,j].plot(difR[j], difval[j], '.', color='black')
+            axd[0,j].plot(difL[i,j], difval[i,j], '.', color='black')
+            axd[1,j].plot(difR[i,j], difval[i,j], '.', color='black')
         
     # Labelling, aesthetics
     ax[0,0].set_xlim(left=0)
@@ -660,17 +681,138 @@ for date in rundates:
     axd[1,wbBefore].set_xlabel(r'$\Delta (t_{DVM}-t_{DLM})$')
     axd[0,0].set_ylabel(r'$\Delta$'+plotvar+' Left')
     axd[1,0].set_ylabel(r'$\Delta$'+plotvar+' Right')
-    
     if date=='20210817_1':
         axd[0,0].set_xlim(left=-10)
+        
+    #--- summary statistics
+    coefs = np.full((wbBefore+wbAfter+1,4), np.nan) # wingbeat x Lslope, Lint, Rslope, Rint
+    dcoefs = np.full((wbBefore+wbAfter,4), np.nan)
+    cor = np.full((wbBefore+wbAfter+1,2), np.nan) # wingbeat x Lcor, Rcor
+    dcor = np.full((wbBefore+wbAfter,4), np.nan)
+    # Left side
+    if ~np.all(np.isnan(tdl)):
+        # Regular
+        for i in np.arange(0,wbBefore+wbAfter+1):
+            # Linear regression left
+            x = tdl[:,i]
+            y = val[:,i]
+            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+            coefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+            # correlation left
+            cor[i,0] = np.corrcoef(x,y)[0,1]
+            # Plot linear regressions
+            ax[0,i].axline((0,coefs[i,1]), slope=coefs[i,0])
+            # Plot corr
+            ax[0,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,0]), color='red', fontsize=8,
+                         horizontalalignment='center', verticalalignment='center',
+                         transform = ax[0,i].transAxes)
+        # Diff
+        for i in np.arange(0,wbBefore+wbAfter):
+            # Linear regression left
+            x = difL[:,i]
+            y = difval[:,i]
+            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+            dcoefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+            # correlation left
+            dcor[i,0] = np.corrcoef(x,y)[0,1]
+            # Plot linear regressions
+            axd[0,i].axline((0,dcoefs[i,1]), slope=dcoefs[i,0])
+            # Plot corr
+            axd[0,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,0]), color='red', fontsize=8,
+                          horizontalalignment='center', verticalalignment='center',
+                          transform = axd[0,i].transAxes)
+    # Right side
+    if ~np.all(np.isnan(tdr)):
+        # Regular
+        for i in np.arange(0,wbBefore+wbAfter+1):
+            # Linear regression right
+            x = tdr[:,i]
+            y = val[:,i]
+            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+            coefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+            # correlation right
+            cor[i,1] = np.corrcoef(x,y)[0,1]
+            # Plot linear regressions
+            ax[1,i].axline((0,coefs[i,3]), slope=coefs[i,2])
+            # Plot corr
+            ax[1,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,1]), color='red', fontsize=8,
+                         horizontalalignment='center', verticalalignment='center',
+                         transform = ax[1,i].transAxes)
+        # Diff
+        for i in np.arange(0,wbBefore+wbAfter):
+            # Linear regression left
+            x = difR[:,i]
+            y = difval[:,i]
+            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+            dcoefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+            # correlation left
+            dcor[i,1] = np.corrcoef(x,y)[0,1]
+            # Plot linear regressions
+            axd[1,i].axline((0,dcoefs[i,3]), slope=dcoefs[i,2])
+            # Plot corr
+            axd[1,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,1]), color='red', fontsize=8,
+                          horizontalalignment='center', verticalalignment='center',
+                          transform = axd[1,i].transAxes)
+        
+    ''' 
+    NOTE:
+    could do everything above WAAY more elegantly. Worth a rewrite at a later date
+    '''
+        
     
     if saveplots:
-        fig.savefig(savefigdir+'dt_vs_'+aggdict['mx']+'_'+plotvar+'_'+date+figFileType,
+        fig.savefig(savefigdir+'dt_vs_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
                     dpi=dpi)
-        figd.savefig(savefigdir+'delta_dt_vs_delta_'+aggdict['mx']+'_'+plotvar+'_'+date+figFileType,
+        figd.savefig(savefigdir+'delta_dt_vs_delta_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
                      dpi=dpi)
 
-
+    #%% Waveforms colored/offset by DVM-DLM time differences
+    plotvar = 'mx'
+    # Create dataframe
+    df = da.loc[(da.wbstate.isin(['stim','post'])) & (da.stimphase<0.5),].copy()
+    df['tdl'] = (df['LDVM_fs']-df['LDLM_fs'])/10
+    df['tdr'] = (df['RDVM_fs']-df['RDLM_fs'])/10
+    df = df.loc[(df['tdl']>0) | (df['tdr']>0)]
+    # mincol = np.nanmin((np.nanmin(df['tdl']), np.nanmin(df['tdr'])))
+    # maxcol = np.nanmax((np.nanmax(df['tdl']), np.nanmax(df['tdr'])))
+    mincol = 10
+    maxcol = 40
+    bins = np.linspace(0,1,10)
+    
+    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True,
+                           gridspec_kw={'wspace': 0, 'hspace': 0.1})
+    
+    # Loop over pulses
+    for i,p in enumerate(np.unique(df.pulse)):
+        dt = df.loc[df.pulse==p, ]
+        # change phase to start at zero, go to wbBefore+wbAfter
+        ph = dt.phase.to_numpy()
+        for i in np.where(ph==1)[0]:
+            ph[i+1:] += 1
+        for j,side in enumerate(['l','r']):
+            thiscolr = (dt['td'+side].iloc[0]-mincol)/(maxcol-mincol)
+            if ~np.isnan(thiscolr):
+                ax[j].plot(ph, dt.mx.to_numpy() + 4.5*np.digitize(thiscolr,bins),
+                           color=viridis(thiscolr),
+                           alpha=0.5, lw=0.5)
+            
+    # Colorbar
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    tickrange = np.linspace(mincol, maxcol, 10)
+    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                        ticks=(tickrange-mincol)/(maxcol-mincol),
+                        cax=cbar_ax)
+    cbar.ax.set_yticklabels([str(round(x,3)) for x in tickrange], fontsize=7)
+    cbar.ax.set_title(r'$\Delta$t')
+    
+    if saveplots:
+        fig.savefig(savefigdir+'waveforms_dt_'+date+figFileType, dpi=dpi)
+    
 
     #%% Wingbeat mean torques vs. stimulus time/phase
 
@@ -805,12 +947,12 @@ for i,m in enumerate(channelsEMG):
 
 #%% A quickplot cell
 
-trial = 7
+trial = 10
 
 quickPlot(date, str(trial).zfill(3),
           tstart=0, tend=20,
           lpfCutoff=500,
-          plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx','fz'],
+          plotnames=['stim','LDVM','LDLM','RDLM','RDVM','mx','fz','fy','fx'],
           readFrom='dropbox')
 
 # set up
@@ -832,17 +974,6 @@ for j in np.unique(df['wb']):
     plt.plot([wbtime[0], wbtime[-1]], np.mean(yvec)*np.ones(2)+5+np.std(yvec), color='gray')
     if j % 2 == 0:
         plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
-        
-
-#%%
-plt.figure()
-for j in np.unique(df['wb']):
-    dt = df.loc[df['wb']==j, ]
-    if dt.wbstate.iloc[0]!='regular':
-        plt.plot(dt['phase'], dt['mx'], color='red')
-    else:
-        plt.plot(dt['phase'], dt['mx'], alpha=0.1)
-
 
 #%%
 
@@ -852,8 +983,6 @@ for j in np.unique(df['wb']):
 '''
 
 TODO
-- NEED to find solution for wingbeat finding or scrap fz; not reliable
-
 - Filter F/T BEFORE transform; would that matter?
 
 - Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
