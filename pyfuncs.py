@@ -370,7 +370,7 @@ def quickPlot(date, trial, tstart=5, tend=10,
     # Combine into single dict
     full = {**emg, **ftd}
     # Find indices to plot
-    inds = np.arange(tstart*fsamp, tend*fsamp)
+    inds = np.arange(int(tstart*fsamp), int(tend*fsamp))
     # Plot
     plt.figure()
     for i,n in enumerate(plotnames):

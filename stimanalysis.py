@@ -17,7 +17,6 @@ import pandas as pd
 from scipy.signal import hilbert
 from scipy.stats import binned_statistic
 from sklearn.linear_model import LinearRegression
-import random
 from pyfuncs import *
 
 import time as systime
@@ -28,7 +27,7 @@ import time as systime
 
 #------ Global controls
 # Plot controls
-wbBefore = 4
+wbBefore = 2
 wbAfter = 4
 # Figure saving controls
 saveplots = True
@@ -41,8 +40,7 @@ channelsEMG = ['LDVM', 'LDLM', 'RDLM', 'RDVM']
 channelsExtra = ['stim']
 channelsFT = ['fx', 'fy', 'fz', 'mx', 'my', 'mz']
 # More known things
-# names of wingbeat states that aren't just "regular"
-states = ['pre', 'stim', 'post']
+states = ['pre', 'stim', 'post'] # names of wingbeat states that aren't just "regular"
 
 ''' QUICK FIX FOR NOW '''
 stimMuscles = ['LDLM','RDLM']
@@ -86,13 +84,12 @@ stimAmplitudeThresh = 7
 dtmaxthresh = 100  # (ms)
 
 
-#%% Initial read and processing
+# %% Initial read and processing
 
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
 # rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-# rundates = ['20210817_1','20210818_1']
-rundates = ['20210803_1','20210816','20210816_1']
+rundates = ['20210816','20210816_1','20210817_1','20210818_1']
 for date in rundates:
     plt.close('all')
 
@@ -266,7 +263,7 @@ for date in rundates:
     # look at difference in stim times, assign those above threshold as different pulses
     
 
-    #%% Pull in spike times from spike sorting
+#%% Pull in spike times from spike sorting
     print('   Pulling and analyzing spike sorting...')
     tic = systime.perf_counter()
 
@@ -352,7 +349,7 @@ for date in rundates:
 
     print('       done in ' + str(systime.perf_counter()-tic))
     
-    #%% Keep only pulses where there is a good induced AP in both stim'd muscles
+#%% Keep only pulses where there is a good induced AP in both stim'd muscles
     windowLen = 50
     
     viridis = cmx.get_cmap('viridis')
@@ -461,7 +458,7 @@ for date in rundates:
     print('       done in ' + str(systime.perf_counter()-tic))
 
 
-    #%% Plot distribution of spike phase/time for each muscle
+#%% Plot distribution of spike phase/time for each muscle
 
     # Spike phase
     fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
@@ -507,7 +504,7 @@ for date in rundates:
     if saveplots:
         plt.savefig(savefigdir + 'stimphase_vs_spiketimes_prestimpost_' + date + figFileType,
                     dpi=dpi)
-    #%% First spike phase vs. stimphase
+#%% First spike phase vs. stimphase
     
     # Spike phase pre-, stim, post-
     fig, ax = plt.subplots(len(hasSort), 3,
@@ -547,7 +544,7 @@ for date in rundates:
     if saveplots:
         plt.savefig(savefigdir+'inducedAP_comparison_'+date+figFileType, dpi=dpi)
 
-    #%% L-R timing differences
+#%% L-R timing differences
     # Make aggregate control dictionary
     aggdict = {}
     for i in list(da):
@@ -606,13 +603,13 @@ for date in rundates:
         fig.savefig(savefigdir+'wb_vs_deltat_'+date+figFileType, dpi=dpi)
     
     
-    #%% L-R timing differences against mean output variables
+#%% L-R timing differences against mean output variables
     plotvar = 'mx'
-    
     # Summary stat to run
-    summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
+    # summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
+    summaryfunc = lambda x: np.trapz(x, dx=0.0001)
     # Name to refer to it by
-    summaryStatName = 'pkpk'
+    summaryStatName = 'integral'
 
     # Make aggregate control dictionary
     aggdict = {}
@@ -672,8 +669,8 @@ for date in rundates:
     ax[1,wbBefore].set_xlabel(r'$(t_{DVM}-t_{DLM})$')
     for i in np.arange(-wbBefore,wbAfter+1):
         ax[0,i+wbBefore].set_title(i)
-    ax[0,0].set_ylabel(aggdict['mx']+' '+plotvar+' Left')
-    ax[1,0].set_ylabel(aggdict['mx']+' '+plotvar+' Right')
+    ax[0,0].set_ylabel(summaryStatName+' '+plotvar+' Left')
+    ax[1,0].set_ylabel(summaryStatName+' '+plotvar+' Right')
     
     for i in np.arange(-wbBefore,wbAfter):
         axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
@@ -770,7 +767,7 @@ for date in rundates:
         figd.savefig(savefigdir+'delta_dt_vs_delta_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
                      dpi=dpi)
 
-    #%% Waveforms colored/offset by DVM-DLM time differences
+#%% Waveforms colored/offset by DVM-DLM time differences
     plotvar = 'mx'
     # Create dataframe
     df = da.loc[(da.wbstate.isin(['stim','post'])) & (da.stimphase<0.5),].copy()
@@ -814,7 +811,7 @@ for date in rundates:
         fig.savefig(savefigdir+'waveforms_dt_'+date+figFileType, dpi=dpi)
     
 
-    #%% Wingbeat mean torques vs. stimulus time/phase
+#%% Wingbeat mean torques vs. stimulus time/phase
 
     plotchannels = ['mx', 'my', 'mz']
 
@@ -851,7 +848,7 @@ for date in rundates:
                     dpi=dpi)
 
 
-    #%% Difference between traces pre, during, post stim
+#%% Difference between traces pre, during, post stim
     
     # set up figure
     plt.figure()
@@ -981,19 +978,15 @@ for j in np.unique(df['wb']):
 
 
 '''
-
 TODO
 - Filter F/T BEFORE transform; would that matter?
-
 - Change to allow arbitrary number of stimulus wingbeats (with some accidental skips)
 - Handle spike sorting _up and _down files without repeating spikes
-
 - Mean vs stim phase: Change to also do DIFF from previous wingbeat
 '''
 
 '''
-THOUGHTS/NOTES
-
+SCATTERED NOTES
 - spikes that are heavily drifted throughout cycle are likely cross-talk between DVM and DLM
 Example: 20210816_1 RDVM, very clearly has cross-talk
 
