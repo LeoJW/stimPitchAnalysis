@@ -24,11 +24,14 @@ import time as systime
 
 
 #%% Controls and Constants
+lastwbnumber = 0
+lastpulsenumber = 0
+
 
 #------ Global controls
 # Plot controls
 wbBefore = 2
-wbAfter = 4
+wbAfter = 2
 # Figure saving controls
 saveplots = True
 savefigdir = os.path.dirname(__file__) + '/pics/'  # dir to save figures in
@@ -89,7 +92,7 @@ dtmaxthresh = 100  # (ms)
 # Loop over list of individuals
 # rundates = ['20210714','20210721','20210727','20210730','20210801','20210803','20210803_1']
 # rundates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-rundates = ['20210816','20210816_1','20210817_1','20210818_1']
+rundates = ['20210803_1','20210816','20210817_1','20210818_1']
 for date in rundates:
     plt.close('all')
 
@@ -603,169 +606,169 @@ for date in rundates:
         fig.savefig(savefigdir+'wb_vs_deltat_'+date+figFileType, dpi=dpi)
     
     
-#%% L-R timing differences against mean output variables
-    plotvar = 'mx'
-    # Summary stat to run
-    # summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
-    summaryfunc = lambda x: np.trapz(x, dx=0.0001)
-    # Name to refer to it by
-    summaryStatName = 'integral'
+# #%% L-R timing differences against mean output variables
+#     plotvar = 'mx'
+#     # Summary stat to run
+#     # summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
+#     summaryfunc = lambda x: np.trapz(x, dx=0.0001)
+#     # Name to refer to it by
+#     summaryStatName = 'integral'
 
-    # Make aggregate control dictionary
-    aggdict = {}
-    for i in list(da):
-        aggdict[i] = 'first'
-    for i in channelsFT:
-        aggdict[i] = summaryfunc
-    # Create dataframe
-    df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
-    mincol = np.min(df['stimphase'])
-    maxcol = np.max(df['stimphase'])
-    nwb = wbBefore+wbAfter+1
+#     # Make aggregate control dictionary
+#     aggdict = {}
+#     for i in list(da):
+#         aggdict[i] = 'first'
+#     for i in channelsFT:
+#         aggdict[i] = summaryfunc
+#     # Create dataframe
+#     df = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),].groupby('wb').aggregate(aggdict)
+#     mincol = np.min(df['stimphase'])
+#     maxcol = np.max(df['stimphase'])
+#     nwb = wbBefore+wbAfter+1
     
-    # Create plots
-    fig, ax = plt.subplots(2, wbBefore+wbAfter+1,
-                           sharex=True, sharey=True,
-                           figsize=(13,3),
-                           gridspec_kw={'wspace': 0, 'hspace': 0.1})
-    figd, axd = plt.subplots(2, wbBefore+wbAfter,
-                             sharex=True, sharey=True,
-                             figsize=(13,3),
-                             gridspec_kw={'wspace': 0, 'hspace': 0.1})
-    # Preallocate
-    npulse = len(np.unique(df.pulse))
-    tdl = np.full((npulse, wbBefore+wbAfter+1), np.nan)
-    tdr = np.full((npulse, wbBefore+wbAfter+1), np.nan)
-    val = np.full((npulse, wbBefore+wbAfter+1), np.nan)
-    difL = np.full((npulse, wbBefore+wbAfter), np.nan)
-    difR = np.full((npulse, wbBefore+wbAfter), np.nan)
-    difval = np.full((npulse, wbBefore+wbAfter), np.nan)
-    # Loop over pulses
-    for i,p in enumerate(np.unique(df.pulse)):
-        dt = df.loc[df.pulse==p,]
-        # grab wingbeats
-        thiswb = dt['wb'].to_numpy() - dt['wb'].iloc[0]
-        # Grab time differences
-        tdl[i,thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
-        tdr[i,thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
-        val[i,thiswb] = dt[plotvar].to_numpy()
-        # Color by stimulus phase
-        colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
-        # Loop over wingbeats, plot value for each wb
-        for j in range(nwb):
-            ax[0,j].plot(tdl[i,j], val[i,j], '.', color='black')
-            ax[1,j].plot(tdr[i,j], val[i,j], '.', color='black')
-        # Plot differences
-        difL[i,:] = np.diff(tdl[i,:])
-        difR[i,:] = np.diff(tdr[i,:])
-        difval[i,:] = np.diff(val[i,:])
-        for j in range(nwb-1):
-            axd[0,j].plot(difL[i,j], difval[i,j], '.', color='black')
-            axd[1,j].plot(difR[i,j], difval[i,j], '.', color='black')
+#     # Create plots
+#     fig, ax = plt.subplots(2, wbBefore+wbAfter+1,
+#                            sharex=True, sharey=True,
+#                            figsize=(13,3),
+#                            gridspec_kw={'wspace': 0, 'hspace': 0.1})
+#     figd, axd = plt.subplots(2, wbBefore+wbAfter,
+#                              sharex=True, sharey=True,
+#                              figsize=(13,3),
+#                              gridspec_kw={'wspace': 0, 'hspace': 0.1})
+#     # Preallocate
+#     npulse = len(np.unique(df.pulse))
+#     tdl = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+#     tdr = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+#     val = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+#     difL = np.full((npulse, wbBefore+wbAfter), np.nan)
+#     difR = np.full((npulse, wbBefore+wbAfter), np.nan)
+#     difval = np.full((npulse, wbBefore+wbAfter), np.nan)
+#     # Loop over pulses
+#     for i,p in enumerate(np.unique(df.pulse)):
+#         dt = df.loc[df.pulse==p,]
+#         # grab wingbeats
+#         thiswb = dt['wb'].to_numpy() - dt['wb'].iloc[0]
+#         # Grab time differences
+#         tdl[i,thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
+#         tdr[i,thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
+#         val[i,thiswb] = dt[plotvar].to_numpy()
+#         # Color by stimulus phase
+#         colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
+#         # Loop over wingbeats, plot value for each wb
+#         for j in range(nwb):
+#             ax[0,j].plot(tdl[i,j], val[i,j], '.', color='black')
+#             ax[1,j].plot(tdr[i,j], val[i,j], '.', color='black')
+#         # Plot differences
+#         difL[i,:] = np.diff(tdl[i,:])
+#         difR[i,:] = np.diff(tdr[i,:])
+#         difval[i,:] = np.diff(val[i,:])
+#         for j in range(nwb-1):
+#             axd[0,j].plot(difL[i,j], difval[i,j], '.', color='black')
+#             axd[1,j].plot(difR[i,j], difval[i,j], '.', color='black')
         
-    # Labelling, aesthetics
-    ax[0,0].set_xlim(left=0)
-    fig.subplots_adjust(bottom=0.2)
-    ax[1,wbBefore].set_xlabel(r'$(t_{DVM}-t_{DLM})$')
-    for i in np.arange(-wbBefore,wbAfter+1):
-        ax[0,i+wbBefore].set_title(i)
-    ax[0,0].set_ylabel(summaryStatName+' '+plotvar+' Left')
-    ax[1,0].set_ylabel(summaryStatName+' '+plotvar+' Right')
+#     # Labelling, aesthetics
+#     ax[0,0].set_xlim(left=0)
+#     fig.subplots_adjust(bottom=0.2)
+#     ax[1,wbBefore].set_xlabel(r'$(t_{DVM}-t_{DLM})$')
+#     for i in np.arange(-wbBefore,wbAfter+1):
+#         ax[0,i+wbBefore].set_title(i)
+#     ax[0,0].set_ylabel(summaryStatName+' '+plotvar+' Left')
+#     ax[1,0].set_ylabel(summaryStatName+' '+plotvar+' Right')
     
-    for i in np.arange(-wbBefore,wbAfter):
-        axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
-    figd.subplots_adjust(bottom=0.2)
-    axd[1,wbBefore].set_xlabel(r'$\Delta (t_{DVM}-t_{DLM})$')
-    axd[0,0].set_ylabel(r'$\Delta$'+plotvar+' Left')
-    axd[1,0].set_ylabel(r'$\Delta$'+plotvar+' Right')
-    if date=='20210817_1':
-        axd[0,0].set_xlim(left=-10)
+#     for i in np.arange(-wbBefore,wbAfter):
+#         axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
+#     figd.subplots_adjust(bottom=0.2)
+#     axd[1,wbBefore].set_xlabel(r'$\Delta (t_{DVM}-t_{DLM})$')
+#     axd[0,0].set_ylabel(r'$\Delta$'+plotvar+' Left')
+#     axd[1,0].set_ylabel(r'$\Delta$'+plotvar+' Right')
+#     if date=='20210817_1':
+#         axd[0,0].set_xlim(left=-10)
         
-    #--- summary statistics
-    coefs = np.full((wbBefore+wbAfter+1,4), np.nan) # wingbeat x Lslope, Lint, Rslope, Rint
-    dcoefs = np.full((wbBefore+wbAfter,4), np.nan)
-    cor = np.full((wbBefore+wbAfter+1,2), np.nan) # wingbeat x Lcor, Rcor
-    dcor = np.full((wbBefore+wbAfter,4), np.nan)
-    # Left side
-    if ~np.all(np.isnan(tdl)):
-        # Regular
-        for i in np.arange(0,wbBefore+wbAfter+1):
-            # Linear regression left
-            x = tdl[:,i]
-            y = val[:,i]
-            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
-            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
-            coefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
-            # correlation left
-            cor[i,0] = np.corrcoef(x,y)[0,1]
-            # Plot linear regressions
-            ax[0,i].axline((0,coefs[i,1]), slope=coefs[i,0])
-            # Plot corr
-            ax[0,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,0]), color='red', fontsize=8,
-                         horizontalalignment='center', verticalalignment='center',
-                         transform = ax[0,i].transAxes)
-        # Diff
-        for i in np.arange(0,wbBefore+wbAfter):
-            # Linear regression left
-            x = difL[:,i]
-            y = difval[:,i]
-            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
-            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
-            dcoefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
-            # correlation left
-            dcor[i,0] = np.corrcoef(x,y)[0,1]
-            # Plot linear regressions
-            axd[0,i].axline((0,dcoefs[i,1]), slope=dcoefs[i,0])
-            # Plot corr
-            axd[0,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,0]), color='red', fontsize=8,
-                          horizontalalignment='center', verticalalignment='center',
-                          transform = axd[0,i].transAxes)
-    # Right side
-    if ~np.all(np.isnan(tdr)):
-        # Regular
-        for i in np.arange(0,wbBefore+wbAfter+1):
-            # Linear regression right
-            x = tdr[:,i]
-            y = val[:,i]
-            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
-            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
-            coefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
-            # correlation right
-            cor[i,1] = np.corrcoef(x,y)[0,1]
-            # Plot linear regressions
-            ax[1,i].axline((0,coefs[i,3]), slope=coefs[i,2])
-            # Plot corr
-            ax[1,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,1]), color='red', fontsize=8,
-                         horizontalalignment='center', verticalalignment='center',
-                         transform = ax[1,i].transAxes)
-        # Diff
-        for i in np.arange(0,wbBefore+wbAfter):
-            # Linear regression left
-            x = difR[:,i]
-            y = difval[:,i]
-            x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
-            reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
-            dcoefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
-            # correlation left
-            dcor[i,1] = np.corrcoef(x,y)[0,1]
-            # Plot linear regressions
-            axd[1,i].axline((0,dcoefs[i,3]), slope=dcoefs[i,2])
-            # Plot corr
-            axd[1,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,1]), color='red', fontsize=8,
-                          horizontalalignment='center', verticalalignment='center',
-                          transform = axd[1,i].transAxes)
+#     #--- summary statistics
+#     coefs = np.full((wbBefore+wbAfter+1,4), np.nan) # wingbeat x Lslope, Lint, Rslope, Rint
+#     dcoefs = np.full((wbBefore+wbAfter,4), np.nan)
+#     cor = np.full((wbBefore+wbAfter+1,2), np.nan) # wingbeat x Lcor, Rcor
+#     dcor = np.full((wbBefore+wbAfter,4), np.nan)
+#     # Left side
+#     if ~np.all(np.isnan(tdl)):
+#         # Regular
+#         for i in np.arange(0,wbBefore+wbAfter+1):
+#             # Linear regression left
+#             x = tdl[:,i]
+#             y = val[:,i]
+#             x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+#             reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+#             coefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+#             # correlation left
+#             cor[i,0] = np.corrcoef(x,y)[0,1]
+#             # Plot linear regressions
+#             ax[0,i].axline((0,coefs[i,1]), slope=coefs[i,0])
+#             # Plot corr
+#             ax[0,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,0]), color='red', fontsize=8,
+#                          horizontalalignment='center', verticalalignment='center',
+#                          transform = ax[0,i].transAxes)
+#         # Diff
+#         for i in np.arange(0,wbBefore+wbAfter):
+#             # Linear regression left
+#             x = difL[:,i]
+#             y = difval[:,i]
+#             x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+#             reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+#             dcoefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+#             # correlation left
+#             dcor[i,0] = np.corrcoef(x,y)[0,1]
+#             # Plot linear regressions
+#             axd[0,i].axline((0,dcoefs[i,1]), slope=dcoefs[i,0])
+#             # Plot corr
+#             axd[0,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,0]), color='red', fontsize=8,
+#                           horizontalalignment='center', verticalalignment='center',
+#                           transform = axd[0,i].transAxes)
+#     # Right side
+#     if ~np.all(np.isnan(tdr)):
+#         # Regular
+#         for i in np.arange(0,wbBefore+wbAfter+1):
+#             # Linear regression right
+#             x = tdr[:,i]
+#             y = val[:,i]
+#             x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+#             reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+#             coefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+#             # correlation right
+#             cor[i,1] = np.corrcoef(x,y)[0,1]
+#             # Plot linear regressions
+#             ax[1,i].axline((0,coefs[i,3]), slope=coefs[i,2])
+#             # Plot corr
+#             ax[1,i].text(0.2, 0.7, 'r={:.2f}'.format(cor[i,1]), color='red', fontsize=8,
+#                          horizontalalignment='center', verticalalignment='center',
+#                          transform = ax[1,i].transAxes)
+#         # Diff
+#         for i in np.arange(0,wbBefore+wbAfter):
+#             # Linear regression left
+#             x = difR[:,i]
+#             y = difval[:,i]
+#             x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+#             reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+#             dcoefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+#             # correlation left
+#             dcor[i,1] = np.corrcoef(x,y)[0,1]
+#             # Plot linear regressions
+#             axd[1,i].axline((0,dcoefs[i,3]), slope=dcoefs[i,2])
+#             # Plot corr
+#             axd[1,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,1]), color='red', fontsize=8,
+#                           horizontalalignment='center', verticalalignment='center',
+#                           transform = axd[1,i].transAxes)
         
-    ''' 
-    NOTE:
-    could do everything above WAAY more elegantly. Worth a rewrite at a later date
-    '''
+#     ''' 
+#     NOTE:
+#     could do everything above WAAY more elegantly. Worth a rewrite at a later date
+#     '''
         
     
-    if saveplots:
-        fig.savefig(savefigdir+'dt_vs_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
-                    dpi=dpi)
-        figd.savefig(savefigdir+'delta_dt_vs_delta_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
-                     dpi=dpi)
+#     if saveplots:
+#         fig.savefig(savefigdir+'dt_vs_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
+#                     dpi=dpi)
+#         figd.savefig(savefigdir+'delta_dt_vs_delta_'+summaryStatName+'_'+plotvar+'_'+date+figFileType,
+#                      dpi=dpi)
 
 #%% Waveforms colored/offset by DVM-DLM time differences
     plotvar = 'mx'
@@ -896,51 +899,133 @@ for date in rundates:
     if saveplots:
         plt.savefig(savefigdir+'diff_wbmean_'+aggdict['RDLM']+'_'+date+figFileType,
                     dpi=dpi)
-    
 
-#%% Grab single trial, look at a few things over time
-trial = 13
-# Spike phase/time over time
-fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-df = da.loc[da.trial==trial, ]
-for i,m in enumerate(channelsEMG):
-    dt = df.loc[df[m+'_st'], ]
-    ax[i].plot(dt['wb'], dt['phase'], '.')
-# highlight only first AP
-first = [[] for x in range(4)]
-fwb = [[] for x in range(4)]
-for i,m in enumerate(channelsEMG):
-    for name, group in df.groupby('wb'):
-        frstind = np.argmax(group[m+'_st'])
-        if frstind != 0:
-            wb = group['wb'].iloc[0]
-            frst = group['phase'].iloc[frstind]
-            ax[i].plot(wb, frst, '.', color='black')
-            
-            first[i].append(group['reltime'].iloc[frstind])
-            fwb[i].append(wb)
-# Highlight stim AP
-for i,m in enumerate(channelsEMG):
-    dt = df.loc[df[m+'_st'], ]
-    ax[i].plot(dt.loc[dt['wbstate']=='stim', 'wb'],
-                dt.loc[dt['wbstate']=='stim', 'phase'],
-                'r.')
-# label
-for i,m in enumerate(channelsEMG):
-    ax[i].set_ylabel(m)
-    ax[i].set_ylim((0,1))
+
+    # Increment wingbeat, pulse, to make unique for each individual
+    da['date'] = date
+    da['wb'] += lastwbnumber
+    da['pulse'] += lastpulsenumber
+    lastwbnumber += np.max(da.wb)
+    lastpulsenumber += np.max(da.pulse)
+    # Aggregate into dataframe across all individuals
+    if date==rundates[0]:
+        df_all = da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),]
+    else:
+        df_all = df_all.append(da.loc[(da.wbstate!='regular') & (da.stimphase<0.5),])
+
+#%% Make plot with all individuals
+plotvar = 'mx'
+figFileType='.pdf'
+
+
+# Summary stat to run
+summaryfunc = lambda x: np.nanmax(x) - np.nanmin(x)
+# summaryfunc = lambda x: np.trapz(x, dx=0.0001)
+# summaryfunc = lambda x: np.mean(x)
+# summaryfunc = lambda x: np.std(x)
+# Name to refer to it by
+summaryStatName = 'pkpk'
+
+# Make aggregate control dictionary
+aggdict = {}
+for i in list(da):
+    aggdict[i] = 'first'
+for i in channelsFT:
+    aggdict[i] = summaryfunc
+# Create dataframe
+df = df_all.groupby(['wb','date']).aggregate(aggdict)
+mincol = np.min(df['stimphase'])
+maxcol = np.max(df['stimphase'])
+nwb = wbBefore+wbAfter+1
+
+# Create plots
+figd, axd = plt.subplots(2, wbBefore+wbAfter,
+                         sharex=True, sharey=True,
+                         figsize=(8,3),
+                         gridspec_kw={'wspace': 0, 'hspace': 0.1})
+# Preallocate
+npulse = len(np.unique(df.pulse))
+tdl = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+tdr = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+val = np.full((npulse, wbBefore+wbAfter+1), np.nan)
+difL = np.full((npulse, wbBefore+wbAfter), np.nan)
+difR = np.full((npulse, wbBefore+wbAfter), np.nan)
+difval = np.full((npulse, wbBefore+wbAfter), np.nan)
+# Loop over pulses
+for i,p in enumerate(np.unique(df.pulse)):
+    dt = df.loc[df.pulse==p,]
+    # grab wingbeats
+    thiswb = dt['wb'].to_numpy() - dt['wb'].iloc[0]
+    # Grab time differences
+    tdl[i,thiswb] = (dt['LDVM_fs'].to_numpy()-dt['LDLM_fs'].to_numpy())/10
+    tdr[i,thiswb] = (dt['RDVM_fs'].to_numpy()-dt['RDLM_fs'].to_numpy())/10
+    val[i,thiswb] = dt[plotvar].to_numpy()*1000
+    # Color by stimulus phase
+    colphase = (dt['stimphase'].iloc[wbBefore] - mincol)/(maxcol - mincol)
+    # Plot differences
+    difL[i,:] = np.diff(tdl[i,:])
+    difR[i,:] = np.diff(tdr[i,:])
+    difval[i,:] = np.diff(val[i,:])
+    difL[i,difL[i,:]<-15] = np.nan
+    difR[i,difR[i,:]<-15] = np.nan
+    for j in range(nwb-1):
+        axd[0,j].plot(difL[i,j], difval[i,j], '.', color='black')
+        axd[1,j].plot(difR[i,j], difval[i,j], '.', color='black')
+    
+# Labelling, aesthetics
+for i in np.arange(-wbBefore,wbAfter):
+    axd[0,i+wbBefore].set_title(str(i)+r'$\rightarrow$'+str(i+1))
+figd.subplots_adjust(bottom=0.2)
+# axd[1,wbBefore].set_xlabel(r'$\Delta (t_{DVM}-t_{DLM})$')
+figd.text(0.5, 0.04, r'$\Delta (t_{DVM}-t_{DLM})$ (ms)', ha='center')
+figd.text(0.03, 0.5, r'$\Delta$ peak-peak $T_x$ (mNmm)', va='center', rotation='vertical')
+figd.text(0.06, 0.74, 'Left', va='center', rotation='vertical')
+figd.text(0.06, 0.39, 'Right', va='center', rotation='vertical')
+# axd[0,0].set_ylabel(r'Left')
+# axd[1,0].set_ylabel(r'Right')
+axd[0,0].set_xlim(left=-10)
+    
+#--- summary statistics
+dcoefs = np.full((wbBefore+wbAfter,4), np.nan)
+dcor = np.full((wbBefore+wbAfter,4), np.nan)
+# Left side
+if ~np.all(np.isnan(tdl)):
+    # Diff
+    for i in np.arange(0,wbBefore+wbAfter):
+        # Linear regression left
+        x = difL[:,i]
+        y = difval[:,i]
+        x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+        reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+        dcoefs[i,0:2] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+        # correlation left
+        dcor[i,0] = np.corrcoef(x,y)[0,1]
+        # Plot linear regressions
+        axd[0,i].axline((0,dcoefs[i,1]), slope=dcoefs[i,0])
+        # Plot corr
+        axd[0,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,0]), color='red', fontsize=8,
+                      horizontalalignment='center', verticalalignment='center',
+                      transform = axd[0,i].transAxes)
+# Right side
+if ~np.all(np.isnan(tdr)):
+    # Diff
+    for i in np.arange(0,wbBefore+wbAfter):
+        # Linear regression left
+        x = difR[:,i]
+        y = difval[:,i]
+        x,y = x[~np.isnan(x) & ~np.isnan(y)], y[~np.isnan(x) & ~np.isnan(y)]
+        reg = LinearRegression().fit(x.reshape(-1,1), y.reshape(-1,1))
+        dcoefs[i,2:4] = np.array([reg.coef_[0][0], reg.intercept_[0]])
+        # correlation left
+        dcor[i,1] = np.corrcoef(x,y)[0,1]
+        # Plot linear regressions
+        axd[1,i].axline((0,dcoefs[i,3]), slope=dcoefs[i,2])
+        # Plot corr
+        axd[1,i].text(0.2, 0.7, 'r={:.2f}'.format(dcor[i,1]), color='red', fontsize=8,
+                      horizontalalignment='center', verticalalignment='center',
+                      transform = axd[1,i].transAxes)
         
-
-# Plot differences     
-fig, ax = plt.subplots(len(channelsEMG), 1, sharex=True)
-for i,m in enumerate(channelsEMG):
-    ax[i].axhline(y=0.003, color='black')
-    ax[i].axhline(y=-0.003, color='black')
-    ax[i].plot(fwb[i][1:], np.diff(first[i]), '.')
-    
-# label
-for i,m in enumerate(channelsEMG):
-    ax[i].set_ylabel(m)
+plt.savefig(savefigdir+'/joyThesisFigs/'+summaryStatName+figFileType, dpi=dpi)
 
 #%% A quickplot cell
 
