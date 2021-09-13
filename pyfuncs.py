@@ -31,11 +31,11 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
     # Dropbox data directories
     else:
         os.chdir(os.path.join(os.path.expanduser('~'),
-                              'Dropbox (GaTech)',
-                              'Sponberg Team',
-                              'Leo Wood',
-                              'pitchStim',
-                              date))
+                            'Dropbox (GaTech)',
+                            'Sponberg Team',
+                            'Leo Wood',
+                            'pitchStim',
+                            date))
     # Recording type
     if doFT:
         recname = 'FT'
@@ -155,6 +155,7 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                     rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
                     temparray = np.delete(temparray, (rminds), axis=0)
                     mat[ch] = np.delete(mat[ch], (rminds), axis=0)
+                    # Note: removing 
                     
                     # save spike times
                     spikes[m].append(temparray)
@@ -172,11 +173,10 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                     inds = mat[:,0]==ch
                     # grab spike times and put together with trial number
                     temparray = np.column_stack((mat[inds,2], mat[inds,0]))
-                    # # Remove any obvious stim artifacts (high amplitude!)
-                    # rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
-                    # temparray = np.delete(temparray, (rminds), axis=0)
-                    # mat[ch] = np.delete(mat[ch], (rminds), axis=0)
-                    
+                    # Remove any obvious stim artifacts (high amplitude!)
+                    rminds = np.any(mat[inds,3:] > stimAmplitudeThresh, axis=1)
+                    temparray = np.delete(temparray, (np.where(rminds)[0]), axis=0)
+                    keepinds = np.where(inds)[0][np.where(~rminds[0])]
                     # save spike times
                     spikes[m].append(temparray)
                     # Save sort type

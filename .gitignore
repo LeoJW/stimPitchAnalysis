@@ -1,4 +1,5 @@
 *pics
+*preprocessedCache
 __pycache__
 .DS_Store
 pitchControlFigures.pptx

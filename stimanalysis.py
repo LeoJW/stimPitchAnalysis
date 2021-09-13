@@ -1072,9 +1072,6 @@ for j in np.unique(df['wb']):
     if j % 2 == 0:
         plt.axvspan(wbtime[0], wbtime[-1], lw=0, color='#C2C2C2')
 
-#%%
-
-# wbmeanplot(channelsFT, da, 14)
 
 
 '''
