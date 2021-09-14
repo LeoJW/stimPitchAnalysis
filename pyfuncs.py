@@ -20,7 +20,9 @@ from scipy.signal import butter, cheby2, filtfilt, sosfiltfilt
 
 
 # Grab data from a trial. Assumes data dirs are one dir back from location of this script
-def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
+def readMatFile(date, trial,
+                doFT=False, bias=np.zeros((6,1)),
+                useAltTransform=False, altTransform=np.zeros((6,6)),
                 grabOnly=[],
                 readFrom='local'):
     
@@ -60,7 +62,8 @@ def readMatFile(date, trial, doFT=False, bias=np.zeros((6,1)),
     
     # If FT data, then calibrate/transform, change names
     if doFT:
-        datamat[:,1:-1] = transformFTdata(datamat[:,1:-1].transpose(), bias)
+        datamat[:,1:-1] = transformFTdata(datamat[:,1:-1].transpose(), bias,
+                                          useAltTransform=useAltTransform, altTransform=altTransform)
         names[1:-1] = ['fx','fy','fz','mx','my','mz']
     
     # If no specific channels requested, return all
@@ -267,7 +270,7 @@ biasOffset = 6 x 1 np matrix of offset correction voltage values
 Output Variables:
 values = 6 x N matrix of transformed force/torque values in N and Nmm
 '''
-def transformFTdata(rawData, biasOffset, toCOM=True):
+def transformFTdata(rawData, biasOffset, useAltTransform=False, altTransform=np.zeros((6,6))):
     # Calibration Matrix, in N and N-mm:
     cal_m = np.array([
         [-0.000352378, 0.020472451, -0.02633045, -0.688977299, 0.000378075, 0.710008955],
@@ -278,15 +281,16 @@ def transformFTdata(rawData, biasOffset, toCOM=True):
         [-0.056240509, 3.091367987, 0.122101875, 2.941467741, 0.005876647, 3.094672928]
         ])
     # Translation to Center Of Mass (COM)
-    if toCOM:
-        trans_m = np.array([
-            [1,	0,	0,	0,	0,	0],
-            [0,	1,	0,	0,	0,	0],
-            [0,	0,	1,	0,	0,	0],
-            [0,	55.5,	5.4,	1,	0,	0],
-            [-55.5,	0,	0,	0,	1,	0],
-            [-5.4,	0,	0,	0,	0,	1]
-            ])
+    if useAltTransform:
+        # trans_m = np.array([
+        #     [1,	0,	0,	0,	0,	0],
+        #     [0,	1,	0,	0,	0,	0],
+        #     [0,	0,	1,	0,	0,	0],
+        #     [0,	55.5,	5.4,	1,	0,	0],
+        #     [-55.5,	0,	0,	0,	1,	0],
+        #     [-5.4,	0,	0,	0,	0,	1]
+        #     ])
+        trans_m = altTransform
     else:
         # Translation to base of tether (NOT 19 OH MAN GO IN TO THE LAB AND MEASURE THIS BRUH)
         trans_m = np.array([
@@ -358,7 +362,7 @@ def quickPlot(date, trial, tstart=5, tend=10,
     for i in range(6):
         bias[i] = np.mean(biasdata[colnames[i+1]])
     # Read actual data
-    emg, emgnames, fsamp = readMatFile(date, trial, doFT=False, readFrom=readFrom)
+    emg, emgnames, fsamp = readMatFile(date, trial, doFT=False, readFrom=readFrom, bias=bias)
     ftd, ftdnames, _     = readMatFile(date, trial, doFT=True, readFrom=readFrom)
     # Filter data
     for name in channelsEMG: # Filter EMG
@@ -385,225 +389,3 @@ def quickPlot(date, trial, tstart=5, tend=10,
     plt.title(date + '-' + trial)
     plt.show()
 
-
-# binPlot: More general-purpose plotting of dataframes
-def binPlot(df,
-            plotvars, groupvars, colorvar,
-            numbins, wbBefore, wbAfter,
-            doSTD=True,
-            doSummaryStat=True):
-    # Make bins
-    prebin = np.linspace(0, wbBefore, numbins*wbBefore)
-    stimbin = np.linspace(0, 1, numbins)
-    postbin = np.linspace(0, wbAfter, numbins*wbAfter)
-
-    # Color by delay controls
-    colormax = np.max(df[colorvar])
-    colormin = np.min(df[colorvar])
-    # Make plot
-    fig, ax = plt.subplots(len(plotvars), 4,
-                           figsize=(15,10), squeeze=False,
-                           gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
-                                        'wspace' : 0})
-    viridis = cmx.get_cmap('viridis')
-    
-    # Version that takes summary stats:
-    if doSummaryStat:    
-        # Loop over groups
-        for name, group in df.groupby(groupvars):
-            # Loop over plotting variables
-            for i,varname in enumerate(plotvars):
-                    # Which axis to plot on, make binned means
-                    # pre stim
-                    if name[0]=='pre':
-                        useax = 0
-                        temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
-                    # stim
-                    elif name[0]=='stim':
-                        useax = 1        
-                        temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
-                    # post stim
-                    else:
-                        useax = 2
-                        temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
-                    '''
-                    NOTE:
-                    The above code applies mean, std operation to EVERY column, including multphase
-                    This means I'm plotting the MEAN of multphase per bin. Not wrong, but worth knowing
-                    '''
-                    
-                    # Plot STD shaded regions
-                    if doSTD:
-                        ax[i,useax].fill_between(temp['multphase']['mean'],
-                                                  temp[varname]['mean'] - temp[varname]['std'],
-                                                  temp[varname]['mean'] + temp[varname]['std'],
-                                                  color=viridis(name[1]/colormax)[0:3],
-                                                  alpha=0.5)
-                    # Plot mean lines
-                    ax[i,useax].plot(temp['multphase']['mean'],
-                                     temp[varname]['mean'],
-                                     color=viridis((name[1]-colormin)/colormax)[0:3],
-                                     lw=0.5)
-    # Version without summary stats
-    else:
-        # Loop over groups
-        for name, group in df.groupby(groupvars):
-            # Loop over plotting variables
-            for i,varname in enumerate(plotvars):
-                # Choose axis 
-                if name[0]=='pre':
-                    useax = 0
-                elif name[0]=='stim':
-                    useax = 1     
-                else:
-                    useax = 2
-                # Plot!
-                ax[i,useax].plot(group['multphase'],
-                                 group[varname],
-                                 color=viridis((group[colorvar].iloc[0]-colormin)/colormax)[0:3],
-                                 lw=0.5)
-                    
-    # Axis handling    
-    for i,name in enumerate(plotvars):
-        # Remove yaxis labels for rightmost 2 plots
-        ax[i,1].axes.get_yaxis().set_visible(False)
-        ax[i,2].axes.get_yaxis().set_visible(False)
-        # Set ylimits
-        yl = ax[i,0].get_ylim()
-        ax[i,0].set_ylim(yl)
-        ax[i,1].set_ylim(yl)
-        ax[i,2].set_ylim(yl)
-        # Label y axes
-        ax[i,0].set_ylabel(name)
-    # Colorbar handling
-    tickrange = np.sort(np.unique(df[colorvar]))
-    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
-                        ax=ax[:],
-                        shrink=0.4,
-                        ticks=(tickrange-colormin)/colormax)
-    cbar.ax.set_yticklabels(list(map(str, tickrange)),
-                            fontsize=7)
-    cbar.ax.set_title(colorvar)
-        
-
-
-# binPlotDiff: Version of binPlot that takes pre- and post- differences.
-#               Requires wbBefore be the same as wbAfter
-def binPlotDiff(df,
-            plotvars, groupvars, colorvar,
-            numbins, wbBefore, wbAfter,
-            doSTD=True,
-            doSummaryStat=True):
-    # Make bins
-    prebin = np.linspace(0, wbBefore, numbins*wbBefore)
-    stimbin = np.linspace(0, 1, numbins)
-    postbin = np.linspace(0, wbAfter, numbins*wbAfter)
-
-    # Color by delay controls
-    colormax = np.max(df[colorvar])
-    colormin = np.min(df[colorvar])
-    # Make plot
-    fig, ax = plt.subplots(len(plotvars), 4,
-                           figsize=(15,10), squeeze=False,
-                           gridspec_kw={'width_ratios' : [wbBefore,1,wbAfter,0.01],
-                                        'wspace' : 0})
-    viridis = cmx.get_cmap('viridis')
-    
-    # Version that takes summary stats:
-    if doSummaryStat:    
-        # Loop over groups
-        for name, group in df.groupby(groupvars):
-            # Loop over plotting variables
-            for i,varname in enumerate(plotvars):
-                    # Which axis to plot on, make binned means
-                    # pre stim
-                    if name[0]=='pre':
-                        useax = 0
-                        temp = group.groupby(np.digitize(group['multphase'], prebin)).agg(["mean","std"])
-                    # stim
-                    elif name[0]=='stim':
-                        useax = 1        
-                        temp = group.groupby(np.digitize(group['multphase'], stimbin)).agg(["mean","std"])
-                    # post stim
-                    else:
-                        useax = 2
-                        temp = group.groupby(np.digitize(group['multphase'], postbin)).agg(["mean","std"])
-                    
-                    # Plot STD shaded regions
-                    if doSTD:
-                        ax[i,useax].fill_between(temp['multphase']['mean'],
-                                                  temp[varname]['mean'] - temp[varname]['std'],
-                                                  temp[varname]['mean'] + temp[varname]['std'],
-                                                  color=viridis(name[1]/colormax)[0:3],
-                                                  alpha=0.5)
-                    # Plot mean lines
-                    ax[i,useax].plot(temp['multphase']['mean'],
-                                     temp[varname]['mean'],
-                                     color=viridis((name[1]-colormin)/colormax)[0:3],
-                                     lw=0.5)
-    # Version without summary stats
-    else:
-        # Loop over groups
-        for name, group in df.groupby(groupvars):
-            # Loop over plotting variables
-            for i,varname in enumerate(plotvars):
-                # Choose axis 
-                if name[0]=='pre':
-                    useax = 0
-                elif name[0]=='stim':
-                    useax = 1     
-                else:
-                    useax = 2
-                # Plot!
-                ax[i,useax].plot(group['multphase'],
-                                 group[varname],
-                                 color=viridis((group[colorvar].iloc[0]-colormin)/colormax)[0:3],
-                                 lw=0.5)
-                    
-    # Axis handling    
-    for i,name in enumerate(plotvars):
-        # Remove yaxis labels for rightmost 2 plots
-        ax[i,1].axes.get_yaxis().set_visible(False)
-        ax[i,2].axes.get_yaxis().set_visible(False)
-        # Set ylimits
-        yl = ax[i,0].get_ylim()
-        ax[i,1].set_ylim(yl)
-        ax[i,2].set_ylim(yl)
-        # Label y axes
-        ax[i,0].set_ylabel(name)
-    # Colorbar handling
-    tickrange = np.sort(np.unique(df[colorvar]))
-    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
-                        ax=ax[:],
-                        shrink=0.4,
-                        ticks=(tickrange-colormin)/colormax)
-    cbar.ax.set_yticklabels(list(map(str, tickrange)),
-                            fontsize=7)
-    cbar.ax.set_title(colorvar)
-   
-
-
-# wbmeanplot: Plots selected variables as wingbeat means over time
-def wbmeanplot(plotvars, data, trial):
-    # Make aggregate control dictionary
-    aggdict = {}
-    for i in list(data.select_dtypes(include=np.number)): # loop over all numeric columns
-        aggdict[i] = 'mean'
-    aggdict['wbstate'] = 'first'
-    # aggregate dataframe
-    dt = data.loc[data['trial']==trial,].groupby(['wb','trial']).agg(aggdict)
-    
-    # Plot wb mean values for this trial
-    fig, ax = plt.subplots(len(plotvars), 1, sharex='all')
-    for i, varname in enumerate(plotvars):
-        ax[i].plot(dt['Time'], dt[varname], marker='.')
-    # Replot stimulus wingbeats as red
-    for i, varname in enumerate(plotvars):
-        ax[i].plot(dt.loc[dt['wbstate']=='stim', 'Time'],
-                   dt.loc[dt['wbstate']=='stim', varname],
-                   'r.')
-    # Label axes
-    for i, varname in enumerate(plotvars):
-        ax[i].set_ylabel(varname)
-    
-    
