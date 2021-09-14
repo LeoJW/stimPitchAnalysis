@@ -267,7 +267,7 @@ biasOffset = 6 x 1 np matrix of offset correction voltage values
 Output Variables:
 values = 6 x N matrix of transformed force/torque values in N and Nmm
 '''
-def transformFTdata(rawData, biasOffset):
+def transformFTdata(rawData, biasOffset, toCOM=True):
     # Calibration Matrix, in N and N-mm:
     cal_m = np.array([
         [-0.000352378, 0.020472451, -0.02633045, -0.688977299, 0.000378075, 0.710008955],
@@ -278,24 +278,25 @@ def transformFTdata(rawData, biasOffset):
         [-0.056240509, 3.091367987, 0.122101875, 2.941467741, 0.005876647, 3.094672928]
         ])
     # Translation to Center Of Mass (COM)
-    trans_m = np.array([
-        [1,	0,	0,	0,	0,	0],
-        [0,	1,	0,	0,	0,	0],
-        [0,	0,	1,	0,	0,	0],
-        [0,	55.5,	5.4,	1,	0,	0],
-        [-55.5,	0,	0,	0,	1,	0],
-        [-5.4,	0,	0,	0,	0,	1]
-        ])
-    # # Translation to base of tether
-    # trans_m = np.array([
-    #     [1, 0, 0, 0, 0, 0],
-    #     [0, 1, 0, 0, 0, 0],
-    #     [0, 0, 1, 0, 0, 0],
-    #     [0,19, 0, 1, 0, 0],
-    #     [-19,0,0, 0, 1, 0],
-    #     [0, 0, 0, 0, 0, 1]
-    #     ])
-    
+    if toCOM:
+        trans_m = np.array([
+            [1,	0,	0,	0,	0,	0],
+            [0,	1,	0,	0,	0,	0],
+            [0,	0,	1,	0,	0,	0],
+            [0,	55.5,	5.4,	1,	0,	0],
+            [-55.5,	0,	0,	0,	1,	0],
+            [-5.4,	0,	0,	0,	0,	1]
+            ])
+    else:
+        # Translation to base of tether (NOT 19 OH MAN GO IN TO THE LAB AND MEASURE THIS BRUH)
+        trans_m = np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0,19, 0, 1, 0, 0],
+            [-19,0,0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1]
+            ])
     # Calibrate
     rawData = np.matmul(cal_m, rawData)
     # Translate
@@ -347,7 +348,8 @@ def quickPlot(date, trial, tstart=5, tend=10,
               plotnames=['LDVM', 'LDLM','RDLM','RDVM'],
               hpfCutoff = 70,
               lpfCutoff = 500,
-              readFrom='local'):
+              readFrom='local',
+              normalize=True):
     # Dumb hard-coded info
     channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
     # Read empty data for FT
@@ -377,12 +379,13 @@ def quickPlot(date, trial, tstart=5, tend=10,
         # Rescale y to 0-1
         yvec = full[n][inds]
         yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
+        plt.axhline(i, color='black')
         plt.plot(full['Time'][inds], yvec+i)
     # aesthetics
     plt.title(date + '-' + trial)
     plt.show()
 
-        
+
 # binPlot: More general-purpose plotting of dataframes
 def binPlot(df,
             plotvars, groupvars, colorvar,

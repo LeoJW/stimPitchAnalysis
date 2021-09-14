@@ -22,7 +22,7 @@ import time as systime
 #------ Global controls
 # Plot controls
 wbBefore = 10
-wbAfter = 10
+wbAfter = 20
 # Figure saving controls
 saveplots = False
 figFileType = '.png'
