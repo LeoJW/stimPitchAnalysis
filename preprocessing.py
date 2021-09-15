@@ -122,11 +122,9 @@ for date in runDates:
         ftd, ftdnames, _ = readMatFile(date, trial, doFT=True, bias=bias, readFrom=readFrom)
         # Filter data
         for name in channelsEMG:  # Filter EMG
-            emg[name] = butterfilt(emg[name], hpfCutoff,
-                                   fsamp, order=4, bandtype='high')
-        for name in ftdnames:  # Filter FT
-            ftd[name] = butterfilt(ftd[name], lpfCutoff,
-                                   fsamp, order=4, bandtype='low')
+            emg[name] = butterfilt(emg[name], hpfCutoff, fsamp, order=4, bandtype='high')
+        for name in ftdnames[1:-1]:  # Filter FT
+            ftd[name] = butterfilt(ftd[name], lpfCutoff, fsamp, order=4, bandtype='low')
         # Put everything together into a dataframe
         dtemp = pd.DataFrame({**emg, **ftd})
         

@@ -282,14 +282,14 @@ def transformFTdata(rawData, biasOffset, useAltTransform=False, altTransform=np.
         ])
     # Translation to Center Of Mass (COM)
     if useAltTransform:
-        # trans_m = np.array([
-        #     [1,	0,	0,	0,	0,	0],
-        #     [0,	1,	0,	0,	0,	0],
-        #     [0,	0,	1,	0,	0,	0],
-        #     [0,	55.5,	5.4,	1,	0,	0],
-        #     [-55.5,	0,	0,	0,	1,	0],
-        #     [-5.4,	0,	0,	0,	0,	1]
-        #     ])
+        trans_m = np.array([
+            [1,	0,	0,	0,	0,	0],
+            [0,	1,	0,	0,	0,	0],
+            [0,	0,	1,	0,	0,	0],
+            [0,	55.5,	5.4,	1,	0,	0],
+            [-55.5,	0,	0,	0,	1,	0],
+            [-5.4,	0,	0,	0,	0,	1]
+            ])
         trans_m = altTransform
     else:
         # Translation to base of tether (NOT 19 OH MAN GO IN TO THE LAB AND MEASURE THIS BRUH)
