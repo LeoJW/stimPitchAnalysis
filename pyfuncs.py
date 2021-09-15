@@ -18,20 +18,15 @@ import csv
 from scipy.signal import butter, cheby2, filtfilt, sosfiltfilt
 
 
-
-# Grab data from a trial. Assumes data dirs are one dir back from location of this script
-def readMatFile(date, trial,
-                doFT=False, bias=np.zeros((6,1)),
-                useAltTransform=False, altTransform=np.zeros((6,6)),
-                grabOnly=[],
-                readFrom='local'):
-    
+'''
+Grab RAW data from a trial.
+readMatFile below will call this to extract raw data, but apply some transformations and include some bells & whistles
+'''
+def readRaw(date, trial, doFT=False, readFrom='local'):
     startdir = os.path.dirname(os.path.realpath(__file__))
-    # Local data directories
-    if readFrom=='local':
+    if readFrom=='local': # Local data directories
         os.chdir(os.path.join(startdir, os.pardir + '/' + date))
-    # Dropbox data directories
-    else:
+    else: # Dropbox data directories
         os.chdir(os.path.join(os.path.expanduser('~'),
                             'Dropbox (GaTech)',
                             'Sponberg Team',
@@ -39,33 +34,48 @@ def readMatFile(date, trial,
                             'pitchStim',
                             date))
     # Recording type
-    if doFT:
-        recname = 'FT'
-    else:
-        recname = 'recording'
+    recname = 'FT' if doFT else 'recording'
     # Handle underscores for dates with more than 1 moth
     if '_' in date:
         date = date[:len(date)-2]
     # Set up filename
     fname = 'Moth_EMG_' + recname + '_' + date + '_' + trial
     # Load mat file
-    mat = scipy.io.loadmat(fname + '.mat')
+    file = scipy.io.loadmat(fname + '.mat')
     # Grab filename from first dict key that doesn't start with '_'
-    fname = next((k for k in mat.keys() if k[0]!='_'), None)    
+    fname = next((k for k in file.keys() if k[0]!='_'), None)    
     # Grab data
-    datamat = mat[fname]
+    datamat = file[fname]
     # Grab names 
     # (don't ask about the zeros, MANY wrapping array layers)
     names = []
-    for column in mat[fname+'_Header'][0][0][0][0]:
+    for column in file[fname+'_Header'][0][0][0][0]:
         names.append(column[0])
-    
+    # Grab sample rate
+    fsamp = file[fname+'_Control'][0][0][3][0][0]
+    # Move back to starting directory (assuming same as script calling this function!)
+    os.chdir(startdir)
+    # Return
+    return datamat, names, fsamp
+
+
+'''
+Grab data from a trial. 
+Makes some assumptions about data structure in mat file, and makes assumptions about data locations
+'''
+def readMatFile(date, trial,
+                doFT=False, bias=np.zeros((6,1)),
+                M_trans=None,
+                grabOnly=[],
+                readFrom='local'):
+    datamat, names, fsamp = readRaw(date, trial, doFT=doFT, readFrom=readFrom)
     # If FT data, then calibrate/transform, change names
     if doFT:
-        datamat[:,1:-1] = transformFTdata(datamat[:,1:-1].transpose(), bias,
-                                          useAltTransform=useAltTransform, altTransform=altTransform)
+        if np.any(M_trans==None):
+            datamat[:,1:-1] = transformFTdata((datamat[:,1:-1]-bias).transpose())
+        else:
+            datamat[:,1:-1] = transformFTdata((datamat[:,1:-1]-bias).transpose(), M_trans=M_trans)
         names[1:-1] = ['fx','fy','fz','mx','my','mz']
-    
     # If no specific channels requested, return all
     if len(grabOnly)==0:
         # Put both together into dictionary
@@ -81,11 +91,6 @@ def readMatFile(date, trial,
         inds.insert(0, 0)
         for i in inds:
             d[names[i]] = datamat[:,i]
-    # Grab sample rate
-    fsamp = mat[fname+'_Control'][0][0][3][0][0]
-    # Move back to starting directory (assuming same as script calling this function!)
-    os.chdir(startdir)
-    # Return
     return d, names, fsamp
 
 
@@ -109,8 +114,7 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                               'spikesort',
                               date))
     # Get file names in this dir, ignoring notes
-    filenames = [s for s in os.listdir() if s != 'note']    
-    
+    filenames = [s for s in os.listdir() if s != 'note']
     # Prepare storage variables
     spikes = {}
     waveforms = {}
@@ -133,7 +137,6 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
             continue
         # Determine if .mat files or .txt files were used
         fileUsed = mfiles[0][-3:]
-        
         # Loop over all sorted files 
         # (usually 1, may be more if _up or _down variant)
         for sortfile in mfiles:
@@ -158,15 +161,12 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                     rminds = np.where(np.any(mat[ch][:,2:] > stimAmplitudeThresh, axis=1))[0]
                     temparray = np.delete(temparray, (rminds), axis=0)
                     mat[ch] = np.delete(mat[ch], (rminds), axis=0)
-                    # Note: removing 
-                    
                     # save spike times
                     spikes[m].append(temparray)
                     # Save sort type
                     spikes[m + '_sorttype'].append(thistype)
                     # save waveforms
                     waveforms[m].append(mat[ch][:,2:])
-            
             # Read in file (TXT FILE VERSION)
             else:
                 mat = np.loadtxt(sortfile, skiprows=1, delimiter=',')
@@ -179,20 +179,17 @@ def readSpikeSort(date, muscles=['LDVM','LDLM','RDLM','RDVM'],
                     # Remove any obvious stim artifacts (high amplitude!)
                     rminds = np.any(mat[inds,3:] > stimAmplitudeThresh, axis=1)
                     temparray = np.delete(temparray, (np.where(rminds)[0]), axis=0)
-                    keepinds = np.where(inds)[0][np.where(~rminds[0])]
                     # save spike times
                     spikes[m].append(temparray)
                     # Save sort type
                     spikes[m + '_sorttype'].append(thistype)
                     # save waveforms
                     waveforms[m].append(mat[inds,3:])
-                
         # Do a last vstack of all the nparrays in a list
         spikes[m] = np.vstack(spikes[m])
         waveforms[m] = np.vstack(waveforms[m])
     return spikes, waveforms
-    # TODO: Make stimAmplitudeThresh intelligent, adjusted based on normal spike amplitudes
-    
+    # TODO: Make stimAmplitudeThresh intelligent, adjusted based on normal spike amplitudes    
 
 # grab which trials for this moth are good and have delay
 def whichTrials(date, purpose='good', readFrom='local'):
@@ -251,11 +248,6 @@ def whichTrials(date, purpose='good', readFrom='local'):
             # create list of trials
             trials.extend(np.arange(table[1][i], table[1][i+1]+1))
         return trials
-        
-        
-    
-    
-    
 
 
 '''
@@ -268,11 +260,20 @@ rawData = 6 x N np matrix of gauge voltages at single time point
 biasOffset = 6 x 1 np matrix of offset correction voltage values
 
 Output Variables:
-values = 6 x N matrix of transformed force/torque values in N and Nmm
+values = N x 6 matrix of transformed force/torque values in N and Nmm
 '''
-def transformFTdata(rawData, biasOffset, useAltTransform=False, altTransform=np.zeros((6,6))):
+def transformFTdata(rawData,
+                    M_trans = np.array([
+                        [1,	0,	0,	0,	0,	0],
+                        [0,	1,	0,	0,	0,	0],
+                        [0,	0,	1,	0,	0,	0],
+                        [0,	55.5,	5.4,	1,	0,	0],
+                        [-55.5,	0,	0,	0,	1,	0],
+                        [-5.4,	0,	0,	0,	0,	1]
+                        ])
+                    ):
     # Calibration Matrix, in N and N-mm:
-    cal_m = np.array([
+    M_cal = np.array([
         [-0.000352378, 0.020472451, -0.02633045, -0.688977299, 0.000378075, 0.710008955],
         [-0.019191418, 0.839003543, -0.017177775, -0.37643613, 0.004482987, -0.434163392],
         [ 0.830046806, 0.004569748, 0.833562339, 0.021075403, 0.802936538, -0.001350335],
@@ -280,36 +281,10 @@ def transformFTdata(rawData, biasOffset, useAltTransform=False, altTransform=np.
         [-5.320003676, -0.156640061, 2.796170871, 4.206523866, 2.780562472, -4.252850011],
         [-0.056240509, 3.091367987, 0.122101875, 2.941467741, 0.005876647, 3.094672928]
         ])
-    # Translation to Center Of Mass (COM)
-    if useAltTransform:
-        trans_m = np.array([
-            [1,	0,	0,	0,	0,	0],
-            [0,	1,	0,	0,	0,	0],
-            [0,	0,	1,	0,	0,	0],
-            [0,	55.5,	5.4,	1,	0,	0],
-            [-55.5,	0,	0,	0,	1,	0],
-            [-5.4,	0,	0,	0,	0,	1]
-            ])
-        trans_m = altTransform
-    else:
-        # Translation to base of tether (NOT 19 OH MAN GO IN TO THE LAB AND MEASURE THIS BRUH)
-        trans_m = np.array([
-            [1, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0,19, 0, 1, 0, 0],
-            [-19,0,0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1]
-            ])
-    # Calibrate
-    rawData = np.matmul(cal_m, rawData)
-    # Translate
-    rawData = np.matmul(trans_m, rawData)
-    # Apply bias offset
-    rawData = rawData - biasOffset
+    # Calibrate and Translate
+    rawData = M_trans @ M_cal @ rawData
     # Finish
     return(rawData.transpose())
-
 
 
 '''
@@ -327,27 +302,6 @@ def cheby2filt(signal, cutoff, fs, rs=40, order=4, bandtype='low'):
     return y
 
 
-    
-
-'''
-Plotting utility for lines with character bars on end. Taken from
-https://stackoverflow.com/questions/52743119/line-end-styles-in-matplotlib
-'''
-def add_interval(ax, xdata, ydata, caps="  ",
-                 color='black', capsize=24):
-    line = ax.add_line(mpl.lines.Line2D(xdata, ydata, color=color, solid_capstyle='butt'))
-    anno_args = {
-        'ha': 'center',
-        'va': 'center',
-        'size': capsize,
-        'color': line.get_color()
-    }
-    a0 = ax.annotate(caps[0], xy=(xdata[0], ydata[0]), **anno_args)
-    a1 = ax.annotate(caps[1], xy=(xdata[1], ydata[1]), **anno_args)
-    return (line,(a0,a1))
-
-    
-
 def quickPlot(date, trial, tstart=5, tend=10,
               plotnames=['LDVM', 'LDLM','RDLM','RDVM'],
               hpfCutoff = 70,
@@ -357,10 +311,8 @@ def quickPlot(date, trial, tstart=5, tend=10,
     # Dumb hard-coded info
     channelsEMG = ['LDVM','LDLM','RDLM','RDVM']
     # Read empty data for FT
-    biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True, readFrom=readFrom)
-    bias = np.zeros((6,1))
-    for i in range(6):
-        bias[i] = np.mean(biasdata[colnames[i+1]])
+    biasmat, _, fsamp = readRaw(date, 'empty', doFT=True, readFrom=readFrom)
+    bias = biasmat.mean(axis=0)
     # Read actual data
     emg, emgnames, fsamp = readMatFile(date, trial, doFT=False, readFrom=readFrom, bias=bias)
     ftd, ftdnames, _     = readMatFile(date, trial, doFT=True, readFrom=readFrom)
@@ -380,12 +332,11 @@ def quickPlot(date, trial, tstart=5, tend=10,
     # Plot
     plt.figure()
     for i,n in enumerate(plotnames):
-        # Rescale y to 0-1
         yvec = full[n][inds]
-        yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
+        if normalize: # Rescale y to 0-1
+            yvec = (yvec-np.nanmin(yvec))/(np.nanmax(yvec)-np.nanmin(yvec))
         plt.axhline(i, color='black')
         plt.plot(full['Time'][inds], yvec+i)
     # aesthetics
     plt.title(date + '-' + trial)
     plt.show()
-

@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import pandas as pd
 from scipy.signal import hilbert
+from scipy.optimize import lsq_linear
 from pyfuncs import *
 
 import time as systime
@@ -54,6 +55,8 @@ minwblen = 200 # minimum wingbeat length (no wbs faster than 50Hz)
 maxwblen = 1000# maximum wingbeat length (no wbs slower than 10Hz)
 # Thresholds
 stimthresh = 3  # threshold to count stim channel as "on"
+# Tether translation finding controls
+tetherTranslationBounds = ([-20,-20,50],[20,20,70]) # mm from load cell
 
 #------ Spike Sorting Controls
 # Constants
@@ -77,6 +80,7 @@ nbin = 10 # How many stimphase bins to use
 windowLen = 50 # Length of window after stim to plot 
 
 
+translations = []
 runDates = ['20210803_1','20210816','20210817_1','20210818_1']
 for date in runDates:
     #------------------------------------------------------------------------------------------------#
@@ -88,24 +92,48 @@ for date in runDates:
     print(date)
     print('   Reading in main data...')
     tic = systime.perf_counter()
-
-    # Load data
+    
     # Read empty FT for bias
-    biasdata, colnames, fsamp = readMatFile(date, 'empty', doFT=True, readFrom=readFrom)
-    bias = np.zeros((6, 1))
-    for i in range(6):
-        bias[i] = np.mean(biasdata[colnames[i+1]])
+    biasmat, _, fsamp = readRaw(date, 'empty', doFT=True, readFrom=readFrom)
+    bias = biasmat.mean(axis=0)[1:-1]
+    
+    # Use quiescent moth from stim characterization to find translation to COM
+    charTrials = whichTrials(date, purpose='char', readFrom=readFrom)
+    mat, _, _ = readRaw(date, str(charTrials[0]).zfill(3), doFT=True, readFrom=readFrom)
+    mat = mat.mean(axis=0)[1:-1]
+    # Apply calibration matrix and bias, get mean forces and torques for quiescent moth
+    meanFT = transformFTdata((mat-bias).transpose(), M_trans=np.identity(6))
+    # Use mean quiescent forces to find transformation matrix that sets quiescent moments to zero
+    # Set up A and B matrices for least squares
+    A = np.array([
+        [0, -meanFT[2], meanFT[1]],
+        [meanFT[2], 0, -meanFT[0]],
+        [-meanFT[1], meanFT[0], 0]
+        ])
+    B = -meanFT[3:]
+    # Get values of transformation matrix from least squares
+    x = lsq_linear(A, B, bounds=tetherTranslationBounds)
+    # Use those values to make new transform
+    M_trans = np.array([
+        [1,0,0,0,0,0],
+        [0,1,0,0,0,0],
+        [0,0,1,0,0,0],
+        [0, -x.x[2], x.x[1], 1, 0, 0],
+        [x.x[2], 0, -x.x[0], 0, 1, 0],
+        [-x.x[1], x.x[0], 0, 0, 0, 1]
+        ])
+    translations.append(x.x)
+    
     # Read program guide to find good trials with delay
     goodTrials = whichTrials(date, readFrom=readFrom)
-
-    test = [[] for x in range(4)]
+    
     # Create variables for loop
     pulsecount = 1
     lastwb = 0
     lastind = 0
     wbinds = []  # global first,last index pairs for each wingbeat
-    stiminds = [[] for x in range(goodTrials[-1]+1)]
     goodwb = []
+    stiminds = [[] for x in range(goodTrials[-1]+1)]
     '''
     ^Note the +1: For trials I'm sticking to a 1-indexing convention.
     This is evil in python, but it's easier to index like "trial 5 is data[trial==5]"
@@ -116,10 +144,10 @@ for date in runDates:
         # Make string version of trial
         trial = str(i).zfill(3)
         # Read data
-        emg, emgnames, _ = readMatFile(date, trial, doFT=False, 
+        emg, emgnames, _ = readMatFile(date, trial, doFT=False,
                                        grabOnly=channelsEMG+channelsExtra,
                                        readFrom=readFrom)
-        ftd, ftdnames, _ = readMatFile(date, trial, doFT=True, bias=bias, readFrom=readFrom)
+        ftd, ftdnames, _ = readMatFile(date, trial, doFT=True, bias=bias, M_trans=M_trans, readFrom=readFrom)
         # Filter data
         for name in channelsEMG:  # Filter EMG
             emg[name] = butterfilt(emg[name], hpfCutoff, fsamp, order=4, bandtype='high')
