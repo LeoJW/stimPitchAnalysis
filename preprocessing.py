@@ -82,6 +82,7 @@ windowLen = 50 # Length of window after stim to plot
 
 translations = []
 runDates = ['20210803_1','20210816','20210817_1','20210818_1']
+# runDates = ['20210803_1']
 for date in runDates:
     #------------------------------------------------------------------------------------------------#
     '''
@@ -110,18 +111,26 @@ for date in runDates:
         [meanFT[2], 0, -meanFT[0]],
         [-meanFT[1], meanFT[0], 0]
         ])
-    B = -meanFT[3:]
+    B = meanFT[3:]
     # Get values of transformation matrix from least squares
     x = lsq_linear(A, B, bounds=tetherTranslationBounds)
     # Use those values to make new transform
+    # M_trans = np.array([
+    #     [1,0,0,0,0,0],
+    #     [0,1,0,0,0,0],
+    #     [0,0,1,0,0,0],
+    #     [0, -x.x[2], x.x[1], 1, 0, 0],
+    #     [x.x[2], 0, -x.x[0], 0, 1, 0],
+    #     [-x.x[1], x.x[0], 0, 0, 0, 1]
+    #     ])
     M_trans = np.array([
-        [1,0,0,0,0,0],
-        [0,1,0,0,0,0],
-        [0,0,1,0,0,0],
-        [0, -x.x[2], x.x[1], 1, 0, 0],
-        [x.x[2], 0, -x.x[0], 0, 1, 0],
-        [-x.x[1], x.x[0], 0, 0, 0, 1]
-        ])
+                        [1,	0,	0,	0,	0,	0],
+                        [0,	1,	0,	0,	0,	0],
+                        [0,	0,	1,	0,	0,	0],
+                        [0,	55.5,	5.4,	1,	0,	0],
+                        [-55.5,	0,	0,	0,	1,	0],
+                        [-5.4,	0,	0,	0,	0,	1]
+                        ])
     translations.append(x.x)
     
     # Read program guide to find good trials with delay
@@ -193,14 +202,13 @@ for date in runDates:
         for j in np.arange(len(wb)-1):
             ind = np.arange(wb[j], wb[j+1])
             dtemp.loc[ind, 'phase'] = np.linspace(0, 1, len(ind))
-        # Create relative time column that starts at 0 every wingbeat
-        dtemp['reltime'] = dtemp['Time']
-        dtemp['reltime'] = dtemp.groupby(['wb'], group_keys=False).apply(
-            lambda g: g['Time'] - g['Time'].iloc[0])
+        # # Create relative time column that starts at 0 every wingbeat
+        # dtemp['reltime'] = dtemp['Time']
+        # dtemp['reltime'] = dtemp.groupby(['wb'], group_keys=False).apply(
+        #     lambda g: g['Time'] - g['Time'].iloc[0])
 
         # Get stim indices
-        si = np.where(np.logical_and(dtemp['stim'] > 3,
-                                     np.roll(dtemp['stim'] < 3, 1)))[0]
+        si = np.where(np.logical_and(dtemp['stim'] > 3, np.roll(dtemp['stim'] < 3, 1)))[0]
         stiminds[i] = si + lastind
 
         # Waste memory and create several different columns
@@ -211,7 +219,6 @@ for date in runDates:
         for s in si:
             # get which wingbeat this stim is on
             stimwb = dtemp.loc[s, 'wb']
-
             #--- Stim wingbeat
             # Grab indices
             stinds = dtemp['wb'] == stimwb
@@ -238,7 +245,7 @@ for date in runDates:
             dtemp.loc[inds, ['wbstate','pulse','stimphase']] = 'post', pulsecount, stphase
             # Increment global pulse counter
             pulsecount += 1
-
+        
         # Clean EMG channels to NAN during stimulation period (to remove artifact)
         for name in channelsEMG:
             dtemp.loc[dtemp['stim'] > stimthresh, name] = np.nan
@@ -247,7 +254,7 @@ for date in runDates:
         dtemp.index = pd.RangeIndex(start=lastind, stop=lastind+len(emg['Time']), step=1)
         # Update length of this trial 
         lastind += len(emg['Time'])
-
+        
         # Add to full dataframe
         if i == goodTrials[0]:
             da = dtemp
@@ -269,11 +276,10 @@ for date in runDates:
 
     print('   Pulling and analyzing spike sorting...')
     tic = systime.perf_counter()
-
+    
     # Load spike times for this date
     spikes, waveforms = readSpikeSort(date,readFrom=readFrom,
-                                    stimAmplitudeThresh=stimAmplitudeThresh)
-
+                                      stimAmplitudeThresh=stimAmplitudeThresh)
     # Preparation, preallocation
     closespikes = {}
     susrows = {}
@@ -283,37 +289,31 @@ for date in runDates:
         susrows[m] = []
         # New columns in dataframes for spike times (st's)
         da[m+'_st'] = False
-
     # Loop over muscles
     for m in channelsEMG:
         # Make boolean array that'll be true wherever spikes are
         spikeBoolVec = np.zeros(len(da), dtype=bool)
-
         # Fix skiptrials issues if present
         if date in list(skiptrials.keys()):
             # Loop over each skip
             for i in skiptrials[date]:
                 # Bump all trials up one to skip this trial
                 spikes[m][spikes[m][:, 1] >= i, 1] += 1
-
         # Loop over trials that are also in goodtrials
         for i in list(set(np.unique(spikes[m][:, 1])).intersection(goodTrials)):
             # Get inds that are in this trial for spikes and main dataframe
             inds = spikes[m][:, 1] == i
             ida = da['trial'] == i
             firstrow = da.index[np.argmax(ida)]
-
             # Turn spike times into indices
             spikeinds = np.rint(spikes[m][inds, 0]*fsamp).astype(int) + firstrow
             # Save on boolean vector
             spikeBoolVec[spikeinds] = True
-
             #--- Flip spike times to work on the -len : 0 time scale
             # Get time length of this trial
             tlength = np.min(da.loc[ida, 'Time'])
             # Flip times
             spikes[m][inds, 0] = spikes[m][inds, 0] + tlength
-
             #--- Remove spike times that fall within threshold of stim pulse
             stimtimes = da.loc[ida, 'Time'][stiminds[i]].to_numpy()
             closest = np.ones(len(stimtimes), dtype=int)
@@ -330,11 +330,9 @@ for date in runDates:
                     spikeBoolVec[spikeinds[closestSpike]] = False
             # Save closest spikes
             closespikes[m].extend(closest[closest != -1].tolist())
-
         # Remove spikes too close to stim from primary spike data objects as well
         spikes[m] = np.delete(spikes[m], (closespikes[m]), axis=0)
         waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0) 
-
         # Update dataframe column with spikeBoolVec
         da[m+'_st'] = spikeBoolVec
 
@@ -434,10 +432,16 @@ for date in runDates:
             firstall.append(first.to_numpy())
         firstall = np.hstack(firstall)
         da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
-
+    
     # Remove wingbeats that aren't near stimulus
     da = da.loc[da.wbstate!='regular',]
-
+    
+    # Alter wingbeat column to be relative to stimulus (no longer unique)
+    for i in np.unique(da.pulse):
+        inds = da.pulse==i
+        stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
+        da.loc[inds, 'wb'] -= stimwb
+    
     #--- Save
     # If cache dir hasn't been made, make it
     if 'preprocessedCache' not in os.listdir(filedir):
@@ -450,12 +454,11 @@ for date in runDates:
     print('       done in ' + str(systime.perf_counter()-tic))
 
 
-
 '''
 Problems to solve:
 
 - How does the program know which muscles are stim'd on which trials?
 how does this deal with the occasional multi-stim?
 
-- 
+- Would probably make the most sense to ditch absolute wingbeats, just use relative. This script has many absolute wingbeats though
 '''
