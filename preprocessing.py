@@ -74,6 +74,7 @@ Note that same issue is present in 20210803_1, 20210816_1
 '''
 stimAmplitudeThresh = 8 # spikes with amplitude above this are removed
 dtmaxthresh = 100  # (ms) DLM-DVM timing difference threshold
+difthresh = 30 # 3ms
 
 #------ Filtering Data Controls
 # Kept and rejected APs plot controls
@@ -405,7 +406,6 @@ for date in runDates:
     wb = da['wb'].to_numpy()
     
     #%% Grab first spike per wingbeat
-    difthresh = 30 # 3ms
     print('   Grabbing first spike per wingbeat...')
     tic = systime.perf_counter()
     
