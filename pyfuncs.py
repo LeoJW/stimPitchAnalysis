@@ -7,14 +7,11 @@ Created on Mon May 24 11:13:29 2021
 """
 
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.cm as cmx
-import matplotlib.gridspec as gridspec
-
 import os
-import scipy.io
+import pickle
 import csv
+import scipy.io
 from scipy.signal import butter, cheby2, filtfilt, sosfiltfilt
 
 
@@ -340,3 +337,17 @@ def quickPlot(date, trial, tstart=5, tend=10,
     # aesthetics
     plt.title(date + '-' + trial)
     plt.show()
+
+
+'''
+Pickle read and write convenience wrappers so I don't fuck it up
+'''
+def pickleWrite(varlist, filepath):
+    f = open(filepath, 'wb')
+    pickle.dump(varlist, f)
+    f.close()
+def pickleRead(filepath):
+    f = open(filepath, 'rb')
+    varlist = pickle.load(f)
+    f.close()
+    return varlist

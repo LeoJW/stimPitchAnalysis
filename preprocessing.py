@@ -15,6 +15,7 @@ import matplotlib.cm as cmx
 import pandas as pd
 from scipy.signal import hilbert
 from scipy.optimize import lsq_linear
+import pickle
 from pyfuncs import *
 
 import time as systime
@@ -115,23 +116,23 @@ for date in runDates:
     # Get values of transformation matrix from least squares
     x = lsq_linear(A, B, bounds=tetherTranslationBounds)
     # Use those values to make new transform
-    # M_trans = np.array([
-    #     [1,0,0,0,0,0],
-    #     [0,1,0,0,0,0],
-    #     [0,0,1,0,0,0],
-    #     [0, -x.x[2], x.x[1], 1, 0, 0],
-    #     [x.x[2], 0, -x.x[0], 0, 1, 0],
-    #     [-x.x[1], x.x[0], 0, 0, 0, 1]
-    #     ])
     M_trans = np.array([
-                        [1,	0,	0,	0,	0,	0],
-                        [0,	1,	0,	0,	0,	0],
-                        [0,	0,	1,	0,	0,	0],
-                        [0,	55.5,	5.4,	1,	0,	0],
-                        [-55.5,	0,	0,	0,	1,	0],
-                        [-5.4,	0,	0,	0,	0,	1]
-                        ])
-    translations.append(x.x)
+        [1,0,0,0,0,0],
+        [0,1,0,0,0,0],
+        [0,0,1,0,0,0],
+        [0, -x.x[2], x.x[1], 1, 0, 0],
+        [x.x[2], 0, -x.x[0], 0, 1, 0],
+        [-x.x[1], x.x[0], 0, 0, 0, 1]
+        ])
+    # M_trans = np.array([
+    #                     [1,	0,	0,	0,	0,	0],
+    #                     [0,	1,	0,	0,	0,	0],
+    #                     [0,	0,	1,	0,	0,	0],
+    #                     [0,	55.5,	5.4,	1,	0,	0],
+    #                     [-55.5,	0,	0,	0,	1,	0],
+    #                     [-5.4,	0,	0,	0,	0,	1]
+    #                     ])
+    translations.append(x)
     
     # Read program guide to find good trials with delay
     goodTrials = whichTrials(date, readFrom=readFrom)
@@ -449,10 +450,13 @@ for date in runDates:
     # Save to cache dir
     da.to_hdf(os.path.join(filedir, 'preprocessedCache', date)+'.h5',
             key='df', mode='w')
-
-
     print('       done in ' + str(systime.perf_counter()-tic))
 
+# Save other relevant variables of interest
+# file = open(os.path.join(filedir, 'preprocessedCache', 'vars')+'.pkl', 'wb')
+# pickle.dump([translations, runDates], file)
+# file.close()
+pickleWrite([translations, runDates], os.path.join(filedir, 'preprocessedCache', 'vars')+'.pkl')
 
 '''
 Problems to solve:
