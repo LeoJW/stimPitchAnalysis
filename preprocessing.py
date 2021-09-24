@@ -84,7 +84,6 @@ windowLen = 50 # Length of window after stim to plot
 
 translations = []
 runDates = ['20210803_1','20210816','20210817_1','20210818_1']
-# runDates = ['20210803_1']
 for date in runDates:
     #------------------------------------------------------------------------------------------------#
     '''
@@ -117,13 +116,21 @@ for date in runDates:
     # Get values of transformation matrix from least squares
     x = lsq_linear(A, B, bounds=tetherTranslationBounds)
     # Use those values to make new transform
+    # M_trans = np.array([
+    #     [1,0,0,0,0,0],
+    #     [0,1,0,0,0,0],
+    #     [0,0,1,0,0,0],
+    #     [0, -x.x[2], x.x[1], 1, 0, 0],
+    #     [x.x[2], 0, -x.x[0], 0, 1, 0],
+    #     [-x.x[1], x.x[0], 0, 0, 0, 1]
+    #     ]) # Signs may be flipped
     M_trans = np.array([
         [1,0,0,0,0,0],
         [0,1,0,0,0,0],
         [0,0,1,0,0,0],
-        [0, -x.x[2], x.x[1], 1, 0, 0],
-        [x.x[2], 0, -x.x[0], 0, 1, 0],
-        [-x.x[1], x.x[0], 0, 0, 0, 1]
+        [0, x.x[2], -x.x[1], 1, 0, 0],
+        [-x.x[2], 0, x.x[0], 0, 1, 0],
+        [x.x[1], -x.x[0], 0, 0, 0, 1]
         ])
     # M_trans = np.array([
     #                     [1,	0,	0,	0,	0,	0],
