@@ -112,7 +112,7 @@ for date in runDates:
         [meanFT[2], 0, -meanFT[0]],
         [-meanFT[1], meanFT[0], 0]
         ])
-    B = meanFT[3:]
+    B = -meanFT[3:]
     # Get values of transformation matrix from least squares
     x = lsq_linear(A, B, bounds=tetherTranslationBounds)
     # Use those values to make new transform
@@ -123,7 +123,7 @@ for date in runDates:
     #     [0, -x.x[2], x.x[1], 1, 0, 0],
     #     [x.x[2], 0, -x.x[0], 0, 1, 0],
     #     [-x.x[1], x.x[0], 0, 0, 0, 1]
-    #     ]) # Signs may be flipped
+    #     ])
     M_trans = np.array([
         [1,0,0,0,0,0],
         [0,1,0,0,0,0],
