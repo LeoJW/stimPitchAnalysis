@@ -8,6 +8,7 @@ Created on Mon May 24 11:13:29 2021
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cmx
 import os
 import pickle
 import csv
@@ -352,3 +353,61 @@ def pickleRead(filepath):
     f.close()
     return varlist
 
+# binPlot: More general-purpose plotting of dataframes
+def binPlot(df,
+            x, y, groupvars, colorvar,
+            numbins, doSTD=True):    
+    # Make bins
+    dx = np.diff(df[x].iloc[0:2])[0]
+    bins = np.linspace(np.min(df[x]) - dx, np.max(df[x]) + dx, numbins)
+    # Color by delay controls
+    colormax = np.max(df[colorvar])
+    colormin = np.min(df[colorvar])
+    # Make plot
+    fig, ax = plt.subplots(len(y), 1)
+    if len(y)==1:
+        ax = [ax]
+    viridis = cmx.get_cmap('viridis')
+    # Prep outputs
+    xlist = []
+    ylist = []
+    glist = []
+    # Loop over groups
+    for name, group in df.groupby(groupvars):
+        temp = group.groupby(np.digitize(group[x], bins)).agg(["mean","std"])
+        ''' NOTE:
+        The above code applies mean, std operation to EVERY column, including x
+        This means I'm plotting the MEAN of time/phase/whatever per bin. Not wrong, but worth knowing
+        '''
+        # Loop over plotting variables
+        for i,varname in enumerate(y):
+            # Plot STD shaded regions
+            if doSTD:
+                ax[i].fill_between(temp[x]['mean'],
+                                   temp[varname]['mean'] - temp[varname]['std'],
+                                   temp[varname]['mean'] + temp[varname]['std'],
+                                   color=viridis(name/colormax),
+                                   alpha=0.5)
+            # Plot mean lines
+            ax[i].plot(temp[x]['mean'],
+                       temp[varname]['mean'],
+                       color=viridis((name-colormin)/colormax),
+                       lw=0.5)
+            # Save
+            xlist.append(temp[x])
+            ylist.append(temp[varname])
+            glist.append(name)
+    # Axis handling    
+    for i,name in enumerate(y):
+        # Label y axes
+        ax[i].set_ylabel(name)
+    # Colorbar handling
+    tickrange = np.sort(np.unique(df[colorvar]))
+    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                        ax=ax[:],
+                        shrink=0.4,
+                        ticks=(tickrange-colormin)/colormax)
+    cbar.ax.set_yticklabels(list(map(str, tickrange)),
+                            fontsize=7)
+    cbar.ax.set_title(colorvar)
+    return xlist, ylist, glist
