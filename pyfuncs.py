@@ -356,7 +356,8 @@ def pickleRead(filepath):
 # binPlot: More general-purpose plotting of dataframes
 def binPlot(df,
             x, y, groupvars, colorvar,
-            numbins, doSTD=True):    
+            numbins, doSTD=True,
+            makeplot=True):    
     # Make bins
     dx = np.diff(df[x].iloc[0:2])[0]
     bins = np.linspace(np.min(df[x]) - dx, np.max(df[x]) + dx, numbins)
@@ -364,10 +365,11 @@ def binPlot(df,
     colormax = np.max(df[colorvar])
     colormin = np.min(df[colorvar])
     # Make plot
-    fig, ax = plt.subplots(len(y), 1)
-    if len(y)==1:
-        ax = [ax]
-    viridis = cmx.get_cmap('viridis')
+    if makeplot:
+        fig, ax = plt.subplots(len(y), 1)
+        if len(y)==1:
+            ax = [ax]
+        viridis = cmx.get_cmap('viridis')
     # Prep outputs
     xlist = []
     ylist = []
@@ -381,33 +383,35 @@ def binPlot(df,
         '''
         # Loop over plotting variables
         for i,varname in enumerate(y):
-            # Plot STD shaded regions
-            if doSTD:
-                ax[i].fill_between(temp[x]['mean'],
-                                   temp[varname]['mean'] - temp[varname]['std'],
-                                   temp[varname]['mean'] + temp[varname]['std'],
-                                   color=viridis(name/colormax),
-                                   alpha=0.5)
-            # Plot mean lines
-            ax[i].plot(temp[x]['mean'],
-                       temp[varname]['mean'],
-                       color=viridis((name-colormin)/colormax),
-                       lw=0.5)
+            if makeplot:
+                # Plot STD shaded regions
+                if doSTD:
+                    ax[i].fill_between(temp[x]['mean'],
+                                       temp[varname]['mean'] - temp[varname]['std'],
+                                       temp[varname]['mean'] + temp[varname]['std'],
+                                       color=viridis(name/colormax),
+                                       alpha=0.5)
+                # Plot mean lines
+                ax[i].plot(temp[x]['mean'],
+                           temp[varname]['mean'],
+                           color=viridis((name-colormin)/colormax),
+                           lw=0.5)
             # Save
             xlist.append(temp[x])
             ylist.append(temp[varname])
             glist.append(name)
-    # Axis handling    
-    for i,name in enumerate(y):
-        # Label y axes
-        ax[i].set_ylabel(name)
-    # Colorbar handling
-    tickrange = np.sort(np.unique(df[colorvar]))
-    cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
-                        ax=ax[:],
-                        shrink=0.4,
-                        ticks=(tickrange-colormin)/colormax)
-    cbar.ax.set_yticklabels(list(map(str, tickrange)),
-                            fontsize=7)
-    cbar.ax.set_title(colorvar)
+    if makeplot:
+        # Axis handling
+        for i,name in enumerate(y):
+            # Label y axes
+            ax[i].set_ylabel(name)
+        # Colorbar handling
+        tickrange = np.sort(np.unique(df[colorvar]))
+        cbar = fig.colorbar(cmx.ScalarMappable(norm=None, cmap=viridis),
+                            ax=ax[:],
+                            shrink=0.4,
+                            ticks=(tickrange-colormin)/colormax)
+        cbar.ax.set_yticklabels(list(map(str, tickrange)),
+                                fontsize=7)
+        cbar.ax.set_title(colorvar)
     return xlist, ylist, glist
