@@ -26,7 +26,7 @@ import time as systime
 wbBefore = 10
 wbAfter = 20
 # Figure saving controls
-saveplots = False
+saveplots = True
 figFileType = '.png'
 dpi = 300
 # Directory handling
