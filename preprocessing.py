@@ -22,7 +22,9 @@ import time as systime
 
 
 #------ Global controls
-# Plot controls
+# Individuals to process
+runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
+# runDates = ['20210816_1']
 wbBefore = 10
 wbAfter = 20
 # Figure saving controls
@@ -80,10 +82,11 @@ difthresh = 50 # 3ms
 # Kept and rejected APs plot controls
 nbin = 10 # How many stimphase bins to use
 windowLen = 50 # Length of window after stim to plot 
+wbBeforeRequired = 2
+wbAfterRequired = 2
 
 
 translations = []
-runDates = ['20210803_1','20210816','20210817_1','20210818_1']
 for date in runDates:
     #------------------------------------------------------------------------------------------------#
     '''
@@ -116,14 +119,6 @@ for date in runDates:
     # Get values of transformation matrix from least squares
     x = lsq_linear(A, B, bounds=tetherTranslationBounds)
     # Use those values to make new transform
-    # M_trans = np.array([
-    #     [1,0,0,0,0,0],
-    #     [0,1,0,0,0,0],
-    #     [0,0,1,0,0,0],
-    #     [0, -x.x[2], x.x[1], 1, 0, 0],
-    #     [x.x[2], 0, -x.x[0], 0, 1, 0],
-    #     [-x.x[1], x.x[0], 0, 0, 0, 1]
-    #     ])
     M_trans = np.array([
         [1,0,0,0,0,0],
         [0,1,0,0,0,0],
@@ -132,14 +127,6 @@ for date in runDates:
         [-x.x[2], 0, x.x[0], 0, 1, 0],
         [x.x[1], -x.x[0], 0, 0, 0, 1]
         ])
-    # M_trans = np.array([
-    #                     [1,	0,	0,	0,	0,	0],
-    #                     [0,	1,	0,	0,	0,	0],
-    #                     [0,	0,	1,	0,	0,	0],
-    #                     [0,	55.5,	5.4,	1,	0,	0],
-    #                     [-55.5,	0,	0,	0,	1,	0],
-    #                     [-5.4,	0,	0,	0,	0,	1]
-    #                     ])
     translations.append(x)
     
     # Read program guide to find good trials with delay
@@ -193,7 +180,7 @@ for date in runDates:
                 (wbdiff > maxwblen)
         for ii in np.where(badwb)[0]:
             keep[wb2col[ii,0]:wb2col[ii,1]] = False
-            
+        
         # Save into global (for this trial) list
         goodwb.append(keep)
         # Save wingbeat indices
@@ -211,10 +198,6 @@ for date in runDates:
         for j in np.arange(len(wb)-1):
             ind = np.arange(wb[j], wb[j+1])
             dtemp.loc[ind, 'phase'] = np.linspace(0, 1, len(ind))
-        # # Create relative time column that starts at 0 every wingbeat
-        # dtemp['reltime'] = dtemp['Time']
-        # dtemp['reltime'] = dtemp.groupby(['wb'], group_keys=False).apply(
-        #     lambda g: g['Time'] - g['Time'].iloc[0])
 
         # Get stim indices
         si = np.where(np.logical_and(dtemp['stim'] > 3, np.roll(dtemp['stim'] < 3, 1)))[0]
@@ -419,48 +402,53 @@ for date in runDates:
                         if firstSpike==0:
                             # Set this pulse to be counted as "bad" and filtered out
                             goodwb[da.pulse==da.loc[j,'pulse']] = False
-    
     # Remove bad wingbeats!
     da = da[goodwb]
     
-    # Recreate a few vectors
-    wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
-    wb = da['wb'].to_numpy()
+    # # Recreate a few vectors
+    # wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
+    # wb = da['wb'].to_numpy()
     
     #%% Grab first spike per wingbeat
     print('   Grabbing first spike per wingbeat...')
     tic = systime.perf_counter()
     
-    # Determine which muscles were spike sorted
-    hasSort = [m for m in channelsEMG if np.shape(spikes[m])[0] > 1]
-    # preallocate first_spike columns
-    for m in channelsEMG:
-        da[m+'_fs'] = np.nan
-    # Loop over muscles
-    for i,m in enumerate(hasSort):
-        firstall = []
-        # Loop over trials
-        for j in np.unique(da.trial):
-            # get indices 
-            dt = da.loc[da.trial==j].groupby('wb')
-            # get index of first spike in all wingbeats
-            first = dt[m+'_st'].idxmax() - dt[m+'_st'].idxmin()
-            # Note which wingbeats to ignore based on state (stim, prestim, etc)
-            ignorewb = dt['wbstate'].nth(0)=='regular'
-            # note which wingbeats have diff outside threshold
-            difBad = np.insert(np.diff(first) > difthresh, 0, True)
-            # Remove zeros, those with diff outside threshold (that aren't stim!)
-            first[(first==0) | difBad | ignorewb] = np.nan 
-            ''' 
-            Right now this just sets all wingbeats that aren't in regions I care about to not have a first wingbeat
-            It doesn't prevent difthresh being applied to stim wingbeats!
-            '''
-            firstall.append(first.to_numpy())
-        firstall = np.hstack(firstall)
-        da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
+    # # Determine which muscles were spike sorted
+    # hasSort = [m for m in channelsEMG if np.shape(spikes[m])[0] > 1]
+    # # preallocate first_spike columns
+    # for m in channelsEMG:
+    #     da[m+'_fs'] = np.nan
+    # # Loop over muscles
+    # for i,m in enumerate(hasSort):
+    #     firstall = []
+    #     # Loop over trials
+    #     for j in np.unique(da.trial):
+    #         # get indices 
+    #         dt = da.loc[da.trial==j].groupby('wb')
+    #         # get index of first spike in all wingbeats
+    #         first = dt[m+'_st'].idxmax() - dt[m+'_st'].idxmin()
+    #         # Note which wingbeats to ignore based on state (stim, prestim, etc)
+    #         ignorewb = dt['wbstate'].nth(0)=='regular'
+    #         # note which wingbeats have diff outside threshold
+    #         difBad = np.insert(np.diff(first) > difthresh, 0, True)
+    #         # Remove zeros, those with diff outside threshold (that aren't stim!)
+    #         first[(first==0) | difBad | ignorewb] = np.nan 
+    #         ''' 
+    #         Right now this just sets all wingbeats that aren't in regions I care about to not have a first wingbeat
+    #         It doesn't prevent difthresh being applied to stim wingbeats!
+    #         '''
+    #         firstall.append(first.to_numpy())
+    #     firstall = np.hstack(firstall)
+    #     da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
     
     # Remove wingbeats that aren't near stimulus
     da = da.loc[da.wbstate!='regular',]
+    
+    # Remove pulses that don't have enough pre or post wingbeats
+    da = da.groupby(['pulse']).filter(
+        lambda g: (len(np.unique(g.loc[g.wbstate=='pre','wb'])) > wbBeforeRequired) & 
+        (len(np.unique(g.loc[g.wbstate=='post','wb'])) > wbAfterRequired)
+    )
     
     # Alter wingbeat column to be relative to stimulus (no longer unique)
     for i in np.unique(da.pulse):
@@ -487,4 +475,6 @@ Problems to solve:
 how does this deal with the occasional multi-stim?
 
 - Would probably make the most sense to ditch absolute wingbeats, just use relative. This script has many absolute wingbeats though
+
+- Should pickle and cache variables like translations per date, like the main dataframes are
 '''
