@@ -331,15 +331,15 @@ for date in runDates:
     # # Remove DLM stimulation trials from 20210801
     # if date == '20210801':
     #     df = df.loc[~df['trial'].isin([5,6,7,8]), ]
-
     print('       done in ' + str(systime.perf_counter()-tic))
-
     #------------------------------------------------------------------------------------------------#
     '''
-    FILTER DATA AND SAVE
+    FILTER DATA
     Keep only pulses where there are good induced APs in both stimulated muscles
     '''
     #------------------------------------------------------------------------------------------------#
+    print('   Filtering data...')
+    tic = systime.perf_counter()
     if saveplots:
         # Plot induced APs binned by stimphase
         viridis = cmx.get_cmap('viridis')
@@ -410,9 +410,6 @@ for date in runDates:
     # wb = da['wb'].to_numpy()
     
     #%% Grab first spike per wingbeat
-    print('   Grabbing first spike per wingbeat...')
-    tic = systime.perf_counter()
-    
     # # Determine which muscles were spike sorted
     # hasSort = [m for m in channelsEMG if np.shape(spikes[m])[0] > 1]
     # # preallocate first_spike columns
@@ -444,19 +441,29 @@ for date in runDates:
     # Remove wingbeats that aren't near stimulus
     da = da.loc[da.wbstate!='regular',]
     
-    # Remove pulses that don't have enough pre or post wingbeats
-    da = da.groupby(['pulse']).filter(
-        lambda g: (len(np.unique(g.loc[g.wbstate=='pre','wb'])) > wbBeforeRequired) & 
-        (len(np.unique(g.loc[g.wbstate=='post','wb'])) > wbAfterRequired)
-    )
-    
     # Alter wingbeat column to be relative to stimulus (no longer unique)
     for i in np.unique(da.pulse):
         inds = da.pulse==i
         stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
         da.loc[inds, 'wb'] -= stimwb
     
-    #--- Save
+    # Remove pulses missing -1 wingbeat (wb immediately pre-stimulus). Can happen due to fzrelheight threshold
+    da = da.groupby('pulse').filter(lambda g: np.any(g.wb==-1))
+    
+    # Remove pulses that don't have enough pre or post wingbeats
+    da = da.groupby(['pulse']).filter(
+        lambda g: (len(np.unique(g.loc[g.wbstate=='pre','wb'])) > wbBeforeRequired) & 
+        (len(np.unique(g.loc[g.wbstate=='post','wb'])) > wbAfterRequired)
+    )
+    
+    print('       done in ' + str(systime.perf_counter()-tic))
+    #------------------------------------------------------------------------------------------------#
+    '''
+    SAVE DATA
+    '''
+    #------------------------------------------------------------------------------------------------#
+    print('   Saving data...')
+    tic = systime.perf_counter()
     # If cache dir hasn't been made, make it
     if 'preprocessedCache' not in os.listdir(filedir):
         os.mkdir(filedir + '/preprocessedCache')
