@@ -32,7 +32,6 @@ os.chdir(datadir)
 trialdirs = [s for s in os.listdir() if '202108' in s]
 
 
-
 # Loop over trial directories
 for dircount,d in enumerate(trialdirs):
     # Jump to this trial
@@ -99,4 +98,3 @@ for dircount,d in enumerate(trialdirs):
     # Save each channel as its own mat file
     for ch in sortChannels:
         scipy.io.savemat(ch+'_raw.mat', {'file' : final[ch]})
-    
