@@ -82,6 +82,7 @@ difthresh = 50 # 3ms
 # Kept and rejected APs plot controls
 nbin = 10 # How many stimphase bins to use
 windowLen = 50 # Length of window after stim to plot 
+# Controls for removing pulses missing near-stim wingbeats
 wbBeforeRequired = 2
 wbAfterRequired = 2
 
