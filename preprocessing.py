@@ -23,8 +23,8 @@ import time as systime
 
 #------ Global controls
 # Individuals to process
-runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-# runDates = ['20210816_1']
+# runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
+runDates = ['20210819']
 wbBefore = 10
 wbAfter = 20
 # Figure saving controls
@@ -269,8 +269,7 @@ for date in runDates:
     tic = systime.perf_counter()
     
     # Load spike times for this date
-    spikes, waveforms = readSpikeSort(date,readFrom=readFrom,
-                                      stimAmplitudeThresh=stimAmplitudeThresh)
+    spikes, waveforms = readSpikeSort(date,readFrom=readFrom, stimAmplitudeThresh=stimAmplitudeThresh)
     # Preparation, preallocation
     closespikes = {}
     susrows = {}
