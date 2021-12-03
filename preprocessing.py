@@ -23,10 +23,10 @@ import time as systime
 
 #------ Global controls
 # Individuals to process
-# runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1']
-runDates = ['20210819']
-wbBefore = 10
-wbAfter = 20
+runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1','20210819']
+# runDates = ['20210819']
+# Where to get data
+readFrom = 'local'
 # Figure saving controls
 saveplots = True
 figFileType = '.png'
@@ -34,6 +34,9 @@ dpi = 300
 # Directory handling
 filedir = os.path.dirname(__file__) # dir this file occupies
 savefigdir = filedir + '/pics/'  # dir to save figures in
+# Check if savefigdir exists, make it if not
+# if ~os.path.isdir(savefigdir):
+#     os.mkdir(savefigdir)
 
 # Channel names to process
 channelsEMG = ['LDVM', 'LDLM', 'RDLM', 'RDVM']
@@ -46,7 +49,9 @@ states = ['pre', 'stim', 'post'] # names of wingbeat states that aren't just "re
 stimMuscles = ['LDLM','RDLM']
 
 #------ Initial Read and Process Controls
-readFrom = 'dropbox'
+# How many wingbeats around stim to use
+wbBefore = 10
+wbAfter = 20
 # Filter Controls
 hpfCutoff = 70
 lpfCutoff = 500
