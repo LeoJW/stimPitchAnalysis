@@ -245,6 +245,11 @@ def whichTrials(date, purpose='good', readFrom='local'):
         for i in np.arange(0, len(table[1]), 2, dtype=int):
             # create list of trials
             trials.extend(np.arange(table[1][i], table[1][i+1]+1))
+        # Remove any error trials, if they exist
+        if 'error' in names:
+            # Remove trials marked as error
+            for i in table[4]:
+                trials = [x for x in trials if x!=i]
         return trials
 
 
