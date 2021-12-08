@@ -23,8 +23,8 @@ import time as systime
 
 #------ Global controls
 # Individuals to process
-runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1','20210819']
-# runDates = ['20210819']
+# runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1','20210819']
+runDates = ['20210803_1']
 # Where to get data
 readFrom = 'local'
 # Figure saving controls
@@ -407,39 +407,6 @@ for date in runDates:
                             goodwb[da.pulse==da.loc[j,'pulse']] = False
     # Remove bad wingbeats!
     da = da[goodwb]
-    
-    # # Recreate a few vectors
-    # wblen = da.groupby('wb')['wb'].transform('count').to_numpy()
-    # wb = da['wb'].to_numpy()
-    
-    #%% Grab first spike per wingbeat
-    # # Determine which muscles were spike sorted
-    # hasSort = [m for m in channelsEMG if np.shape(spikes[m])[0] > 1]
-    # # preallocate first_spike columns
-    # for m in channelsEMG:
-    #     da[m+'_fs'] = np.nan
-    # # Loop over muscles
-    # for i,m in enumerate(hasSort):
-    #     firstall = []
-    #     # Loop over trials
-    #     for j in np.unique(da.trial):
-    #         # get indices 
-    #         dt = da.loc[da.trial==j].groupby('wb')
-    #         # get index of first spike in all wingbeats
-    #         first = dt[m+'_st'].idxmax() - dt[m+'_st'].idxmin()
-    #         # Note which wingbeats to ignore based on state (stim, prestim, etc)
-    #         ignorewb = dt['wbstate'].nth(0)=='regular'
-    #         # note which wingbeats have diff outside threshold
-    #         difBad = np.insert(np.diff(first) > difthresh, 0, True)
-    #         # Remove zeros, those with diff outside threshold (that aren't stim!)
-    #         first[(first==0) | difBad | ignorewb] = np.nan 
-    #         ''' 
-    #         Right now this just sets all wingbeats that aren't in regions I care about to not have a first wingbeat
-    #         It doesn't prevent difthresh being applied to stim wingbeats!
-    #         '''
-    #         firstall.append(first.to_numpy())
-    #     firstall = np.hstack(firstall)
-    #     da[m+'_fs'] = np.repeat(firstall, wblen[np.insert(np.diff(wb)!=0,0,True)])
     
     # Remove wingbeats that aren't near stimulus
     da = da.loc[da.wbstate!='regular',]
