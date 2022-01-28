@@ -81,8 +81,6 @@ LONG FIX: Redo spike sorting
 Note that same issue is present in 20210803_1, 20210816_1
 '''
 stimAmplitudeThresh = 8 # spikes with amplitude above this are removed
-dtmaxthresh = 100  # (ms) DLM-DVM timing difference threshold
-difthresh = 50 # 3ms
 
 #------ Filtering Data Controls
 # Kept and rejected APs plot controls
@@ -414,12 +412,9 @@ for date in runDates:
     
     # Alter wingbeat column to be relative to stimulus (no longer unique)
     for i in np.unique(da.pulse):
-        try:
-            inds = da.pulse==i
-            stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
-            da.loc[inds, 'wb'] -= stimwb
-        except:
-            bob = 1
+        inds = da.pulse==i
+        stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
+        da.loc[inds, 'wb'] -= stimwb
     
     # Remove pulses missing -1 wingbeat (wb immediately pre-stimulus). Can happen due to fzrelheight threshold
     da = da.groupby('pulse').filter(lambda g: np.any(g.wb==-1))
