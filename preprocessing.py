@@ -24,9 +24,10 @@ import time as systime
 #------ Global controls
 # Individuals to process
 # runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1','20210819']
-runDates = ['20210803_1']
+# runDates = ['20210803_1','20210816_1','20210817_1','20210818_1','20210819']
+runDates = ['20210817_1']
 # Where to get data
-readFrom = 'local'
+readFrom = 'dropbox'
 # Figure saving controls
 saveplots = True
 figFileType = '.png'
@@ -35,8 +36,8 @@ dpi = 300
 filedir = os.path.dirname(__file__) # dir this file occupies
 savefigdir = filedir + '/pics/'  # dir to save figures in
 # Check if savefigdir exists, make it if not
-# if ~os.path.isdir(savefigdir):
-#     os.mkdir(savefigdir)
+if not os.path.isdir(savefigdir):
+    os.mkdir(savefigdir)
 
 # Channel names to process
 channelsEMG = ['LDVM', 'LDLM', 'RDLM', 'RDVM']
@@ -413,9 +414,12 @@ for date in runDates:
     
     # Alter wingbeat column to be relative to stimulus (no longer unique)
     for i in np.unique(da.pulse):
-        inds = da.pulse==i
-        stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
-        da.loc[inds, 'wb'] -= stimwb
+        try:
+            inds = da.pulse==i
+            stimwb = da.loc[(inds) & (da.wbstate=='stim'), 'wb'].iloc[0]
+            da.loc[inds, 'wb'] -= stimwb
+        except:
+            bob = 1
     
     # Remove pulses missing -1 wingbeat (wb immediately pre-stimulus). Can happen due to fzrelheight threshold
     da = da.groupby('pulse').filter(lambda g: np.any(g.wb==-1))
