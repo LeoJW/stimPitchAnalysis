@@ -24,8 +24,7 @@ import time as systime
 #------ Global controls
 # Individuals to process
 # runDates = ['20210803_1','20210816','20210816_1','20210817_1','20210818_1','20210819']
-# runDates = ['20210803_1','20210816_1','20210817_1','20210818_1','20210819']
-runDates = ['20210817_1']
+runDates = ['20210803_1','20210816_1','20210817_1','20210818_1','20210819']
 # Where to get data
 readFrom = 'dropbox'
 # Figure saving controls
@@ -80,12 +79,12 @@ Make spikes from trial 22 empty, and shift the current 22-27 to 23-28
 LONG FIX: Redo spike sorting
 Note that same issue is present in 20210803_1, 20210816_1
 '''
-stimAmplitudeThresh = 8 # spikes with amplitude above this are removed
+stimAmplitudeThresh = 8 # to catch stimulus artifacts, spikes of amplitude above this are removed
 
 #------ Filtering Data Controls
 # Kept and rejected APs plot controls
 nbin = 10 # How many stimphase bins to use
-windowLen = 50 # Length of window after stim to plot 
+windowLen = 50 # Length of window after stim to check for spikes
 # Controls for removing pulses missing near-stim wingbeats
 wbBeforeRequired = 2
 wbAfterRequired = 2
@@ -329,7 +328,6 @@ for date in runDates:
         waveforms[m] = np.delete(waveforms[m], (closespikes[m]), axis=0) 
         # Update dataframe column with spikeBoolVec
         da[m+'_st'] = spikeBoolVec
-
     # # Remove DLM stimulation trials from 20210801
     # if date == '20210801':
     #     df = df.loc[~df['trial'].isin([5,6,7,8]), ]
@@ -444,10 +442,6 @@ for date in runDates:
     print('       done in ' + str(systime.perf_counter()-tic))
 
 '''
-Problems to solve:
-
-- How does the program know which muscles are stim'd on which trials?
-how does this deal with the occasional multi-stim?
-
+Further improvements I could do:
 - Would probably make the most sense to ditch absolute wingbeats, just use relative. This script has many absolute wingbeats though
 '''
