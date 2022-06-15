@@ -19,6 +19,7 @@ from scipy.signal import butter, cheby2, filtfilt, sosfiltfilt
 '''
 Grab RAW data from a trial.
 readMatFile below will call this to extract raw data, but apply some transformations and include some bells & whistles
+Makes hard assumptions about file locations (whoopsie *teehee* UwU)
 '''
 def readRaw(date, trial, doFT=False, readFrom='local'):
     startdir = os.path.dirname(os.path.realpath(__file__))
